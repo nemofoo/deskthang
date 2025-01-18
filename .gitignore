@@ -1,0 +1,38 @@
+# Build directory
+.cache/
+build/
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Generated output files
+*.elf
+*.map
+*.bin
+*.hex
+*.uf2
+*.dis
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Object files
+*.o
+
+# Libraries
+*.lib
+*.a
+
+# Debug files
+*.dSYM/
+
+# OS specific
+.DS_Store
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
