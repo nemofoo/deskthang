@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "pico/stdlib.h"    // Add this for stdio_init_all() and sleep_ms()
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
 #include "GC9A01.h"
