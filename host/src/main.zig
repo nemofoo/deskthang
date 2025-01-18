@@ -5,6 +5,12 @@ const c = @cImport({
     @cInclude("png.h");
 });
 
+const SerialProtocol = struct {
+    const TIMEOUT_MS: u64 = 5000;
+    const RETRY_COUNT: u8 = 3;
+    const CHUNK_SIZE: usize = 512;
+};
+
 const ImageSize = struct {
     const width: usize = 240;
     const height: usize = 240;
@@ -136,40 +142,6 @@ fn rgb888_to_rgb565(r: u8, g: u8, b: u8) u16 {
     return (@as(u16, r >> 3) << 11) | (@as(u16, g >> 2) << 5) | @as(u16, b >> 3);
 }
 
-// Handles serial communication to send image data
-fn sendImageData(serial: std.fs.File, image_data: []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
-
-    try serial.writeAll(&[_]u8{ImageProtocol.START_MARKER});
-    var response_buf: [1]u8 = undefined;
-    if (try serial.read(&response_buf) != ImageProtocol.ACK) return error.ProtocolError;
-
-    try serial.writeAll(&[_]u8{ImageProtocol.IMAGE_COMMAND});
-    if (try serial.read(&response_buf) != ImageProtocol.ACK) return error.ProtocolError;
-
-    var size_bytes: [4]u8 = undefined;
-    std.mem.writeInt(u32, &size_bytes, @intCast(image_data.len), .big);
-    try serial.writeAll(&size_bytes);
-
-    if (try serial.read(&response_buf) != ImageProtocol.ACK) return error.ProtocolError;
-
-    var total_sent: usize = 0;
-    while (total_sent < image_data.len) {
-        const chunk = image_data[total_sent..@min(total_sent + ImageProtocol.CHUNK_SIZE, image_data.len)];
-        try serial.writeAll(chunk);
-        if (try serial.read(&response_buf) != ImageProtocol.ACK) return error.ProtocolError;
-
-        total_sent += chunk.len;
-        const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
-        try stdout.print("\rProgress: {d:.1}%", .{progress});
-    }
-
-    try serial.writeAll(&[_]u8{ImageProtocol.END_MARKER});
-    if (try serial.read(&response_buf) != ImageProtocol.ACK) return error.ProtocolError;
-
-    try stdout.writeAll("\nImage sent successfully!\n");
-}
-
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -251,3 +223,129 @@ const ImageProtocol = struct {
     const ACK: u8 = 'A';
     const CHUNK_SIZE: usize = 512;
 };
+
+fn writeIntBigEndian(value: u32) [4]u8 {
+    return [4]u8{
+        @truncate((value >> 24) & 0xFF),
+        @truncate((value >> 16) & 0xFF),
+        @truncate((value >> 8) & 0xFF),
+        @truncate(value & 0xFF),
+    };
+}
+
+fn readWithTimeout(serial: std.fs.File, buffer: []u8, timeout_ms: u64) !usize {
+    const start_time = std.time.milliTimestamp();
+
+    while (true) {
+        const bytes_read = serial.read(buffer) catch |err| {
+            return err;
+        };
+
+        if (bytes_read > 0) {
+            return bytes_read;
+        }
+
+        if (std.time.milliTimestamp() - start_time > timeout_ms) {
+            return error.Timeout;
+        }
+
+        std.time.sleep(1 * std.time.ns_per_ms);
+    }
+}
+
+fn waitForAck(serial: std.fs.File, log_writer: anytype, retry_count: u8) !void {
+    var response_buf: [1]u8 = undefined;
+    var tries: u8 = 0;
+
+    while (tries < retry_count) : (tries += 1) {
+        const bytes = readWithTimeout(serial, &response_buf, SerialProtocol.TIMEOUT_MS) catch |err| {
+            try log_writer.print("Failed to read ACK (attempt {}/{}): {}\n", .{ tries + 1, retry_count, err });
+            continue;
+        };
+
+        if (bytes == 0) {
+            try log_writer.print("No data received waiting for ACK (attempt {}/{})\n", .{ tries + 1, retry_count });
+            continue;
+        }
+
+        try log_writer.print("Received response: {x}\n", .{response_buf[0]});
+
+        if (response_buf[0] == 'A') {
+            return;
+        }
+
+        try log_writer.print("Invalid response, expected ACK (41), got {x}\n", .{response_buf[0]});
+    }
+
+    return error.NoAckReceived;
+}
+
+fn sendImageData(serial: std.fs.File, image_data: []const u8) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    const log_file = try std.fs.cwd().createFile("protocol.log", .{});
+    defer log_file.close();
+    const data_file = try std.fs.cwd().createFile("image_data.bin", .{});
+    defer data_file.close();
+
+    var log_writer = log_file.writer();
+    var data_writer = data_file.writer();
+
+    try log_writer.print("Starting image transmission at {}\n", .{std.time.timestamp()});
+    try log_writer.print("Image size: {} bytes\n", .{image_data.len});
+
+    // Send START_MARKER and wait for ACK
+    try log_writer.print("Sending START_MARKER: 53\n", .{});
+    try serial.writeAll(&[_]u8{'S'});
+    std.time.sleep(10 * std.time.ns_per_ms); // Wait 10ms
+
+    try waitForAck(serial, log_writer, SerialProtocol.RETRY_COUNT);
+
+    // Send IMAGE_COMMAND and wait for ACK
+    try log_writer.print("Sending IMAGE_COMMAND: 49\n", .{});
+    try serial.writeAll(&[_]u8{'I'});
+    std.time.sleep(10 * std.time.ns_per_ms);
+
+    try waitForAck(serial, log_writer, SerialProtocol.RETRY_COUNT);
+
+    // Send image size (4 bytes, big endian)
+    const size_bytes = writeIntBigEndian(@intCast(image_data.len));
+    try log_writer.print("Sending size: {x:0>2} {x:0>2} {x:0>2} {x:0>2}\n", .{ size_bytes[0], size_bytes[1], size_bytes[2], size_bytes[3] });
+    try serial.writeAll(&size_bytes);
+    std.time.sleep(10 * std.time.ns_per_ms);
+
+    try waitForAck(serial, log_writer, SerialProtocol.RETRY_COUNT);
+
+    // Send data in chunks
+    var total_sent: usize = 0;
+    var chunk_counter: usize = 0;
+
+    while (total_sent < image_data.len) {
+        const chunk_size = @min(SerialProtocol.CHUNK_SIZE, image_data.len - total_sent);
+        const chunk = image_data[total_sent .. total_sent + chunk_size];
+        chunk_counter += 1;
+
+        try log_writer.print("Sending chunk {}: {} bytes\n", .{ chunk_counter, chunk.len });
+        try serial.writeAll(chunk);
+        try data_writer.writeAll(chunk);
+        std.time.sleep(10 * std.time.ns_per_ms);
+
+        try waitForAck(serial, log_writer, SerialProtocol.RETRY_COUNT);
+
+        total_sent += chunk.len;
+        const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
+        try stdout.print("\rProgress: {d:.1}% (Chunk {}, {} bytes sent)", .{ progress, chunk_counter, total_sent });
+        try log_writer.print("Progress: {d:.1}% (Total: {} bytes)\n", .{ progress, total_sent });
+    }
+    try stdout.writeByte('\n');
+
+    // Send END_MARKER
+    try log_writer.print("Sending END_MARKER: 45\n", .{});
+    try serial.writeAll(&[_]u8{'E'});
+    std.time.sleep(10 * std.time.ns_per_ms);
+
+    try waitForAck(serial, log_writer, SerialProtocol.RETRY_COUNT);
+
+    try log_writer.print("Image transmission completed successfully at {}\n", .{std.time.timestamp()});
+    try stdout.writeAll("\nImage sent successfully!\n");
+}

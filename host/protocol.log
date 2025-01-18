@@ -1,0 +1,6 @@
+Starting image transmission at 1737242303
+Image size: 115200 bytes
+Sending START_MARKER: 53
+Failed to read ACK (attempt 1/3): error.Timeout
+Failed to read ACK (attempt 2/3): error.Timeout
+Failed to read ACK (attempt 3/3): error.Timeout

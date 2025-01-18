@@ -16,6 +16,10 @@
 #define PIN_RST  20
 #define SPI_PORT spi0
 
+void debug_print_hex(uint8_t byte) {
+    printf("Received: 0x%02X\n", byte);
+}
+
 // Implementation of the hardware abstraction layer
 void GC9A01_set_reset(uint8_t val) {
     gpio_put(PIN_RST, val);
@@ -60,6 +64,8 @@ void display_init(void) {
 }
 
 void display_raw_image(void) {
+    printf("Starting image receive process\n");
+    
     struct GC9A01_frame frame = {{0,0}, {239,239}};
     GC9A01_set_frame(frame);
     
@@ -70,28 +76,87 @@ void display_raw_image(void) {
     uint8_t buffer[512];
     size_t total_received = 0;
     
+    printf("Waiting for START_MARKER\n");
+    int start_marker = getchar_timeout_us(1000000); // 1 second timeout
+    if (start_marker == PICO_ERROR_TIMEOUT) {
+        printf("Timeout waiting for START_MARKER\n");
+        return;
+    }
+    debug_print_hex(start_marker);
+    
+    // Send ACK
+    printf("Sending ACK\n");
+    putchar('A');
+    
+    printf("Waiting for IMAGE_COMMAND\n");
+    int cmd = getchar_timeout_us(1000000);
+    if (cmd == PICO_ERROR_TIMEOUT || cmd != 'I') {
+        printf("Invalid or missing IMAGE_COMMAND: 0x%02X\n", cmd);
+        return;
+    }
+    putchar('A');  // ACK
+    
+    // Receive image size (4 bytes)
+    printf("Waiting for size bytes\n");
+    uint32_t image_size = 0;
+    for (int i = 0; i < 4; i++) {
+        int b = getchar_timeout_us(1000000);
+        if (b == PICO_ERROR_TIMEOUT) {
+            printf("Timeout waiting for size byte %d\n", i);
+            return;
+        }
+        image_size = (image_size << 8) | b;
+    }
+    printf("Expected image size: %lu bytes\n", image_size);
+    putchar('A');  // ACK
+    
+    // Verify image size
+    if (image_size != IMAGE_SIZE) {
+        printf("Invalid image size: expected %d, got %lu\n", IMAGE_SIZE, image_size);
+        return;
+    }
+    
     // Set data mode for the entire transfer
     GC9A01_set_data_command(1);
     GC9A01_set_chip_select(0);
     
-    while (total_received < IMAGE_SIZE) {
+    printf("Starting data reception\n");
+    
+    while (total_received < image_size) {
         // Read data in chunks
         int bytes_read = 0;
-        while (bytes_read < sizeof(buffer) && total_received + bytes_read < IMAGE_SIZE) {
-            int c = getchar_timeout_us(100000);
-            if (c != PICO_ERROR_TIMEOUT) {
-                buffer[bytes_read++] = (uint8_t)c;
+        while (bytes_read < sizeof(buffer) && total_received + bytes_read < image_size) {
+            int c = getchar_timeout_us(1000000);
+            if (c == PICO_ERROR_TIMEOUT) {
+                printf("Timeout during data receive at byte %d\n", total_received + bytes_read);
+                GC9A01_set_chip_select(1);
+                return;
             }
+            buffer[bytes_read++] = (uint8_t)c;
         }
         
         if (bytes_read > 0) {
             // Send the chunk to display
             GC9A01_spi_tx(buffer, bytes_read);
             total_received += bytes_read;
+            putchar('A');  // ACK
+            printf("Received chunk: %d bytes (Total: %d/%lu)\n", 
+                   bytes_read, total_received, image_size);
         }
     }
     
     GC9A01_set_chip_select(1);
+    
+    // Wait for END_MARKER
+    printf("Waiting for END_MARKER\n");
+    int end_marker = getchar_timeout_us(1000000);
+    if (end_marker == PICO_ERROR_TIMEOUT || end_marker != 'E') {
+        printf("Invalid or missing END_MARKER: 0x%02X\n", end_marker);
+        return;
+    }
+    putchar('A');  // Final ACK
+    
+    printf("Image receive completed successfully\n");
 }
 
 void test_pattern_checkerboard(void) {
@@ -179,15 +244,25 @@ void set_display_pattern(char pattern) {
 
 int main() {
     stdio_init_all();
+    sleep_ms(2000);  // Wait for USB CDC to be ready
+    printf("Display test starting...\n");  // Test print
+    
     display_init();
+    printf("Display initialized\n");
+    
+    // Show initial pattern
+    test_pattern_checkerboard();
+    printf("Initial pattern set\n");
     
     // Show initial pattern
     test_pattern_checkerboard();
     
     // Main loop to handle serial commands
+    printf("Entering main loop\n");
     while(1) {
         int c = getchar_timeout_us(100000); // Check every 100ms
         if (c != PICO_ERROR_TIMEOUT) {
+            printf("Received command: %c\n", (char)c);
             set_display_pattern((char)c);
         }
     }

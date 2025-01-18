@@ -1,104 +1,108 @@
-# GC9A01 Round Display Driver for Raspberry Pi Pico
+# DeskThang
 
-This project implements a driver for the GC9A01 1.28" round LCD display (240x240) on the Raspberry Pi Pico. The display uses SPI communication and is commonly found in smartwatch-style projects.
+A Raspberry Pi Pico based desktop display device. Uses the GC9A01 240x240 round LCD display.
 
-## Hardware Requirements
+## Hardware
 
-- Raspberry Pi Pico/Pico W
-- 1.28" Round LCD Display with GC9A01 Controller
-- Connecting wires
+- Raspberry Pi Pico (RP2040)
+- GC9A01 240x240 Round LCD Display
+- Connections:
+  - MOSI: GPIO 19
+  - SCK: GPIO 18
+  - CS: GPIO 17
+  - DC: GPIO 16
+  - RST: GPIO 20
 
-## Pin Connections
+## Building
 
-| Pico Pin | Display Pin |
-|----------|-------------|
-| GPIO 19  | MOSI (SDA) |
-| GPIO 18  | SCK        |
-| GPIO 17  | CS         |
-| GPIO 16  | DC         |
-| GPIO 20  | RST        |
-| 3.3V     | VCC        |
-| GND      | GND        |
-
-## Project Structure
-
-- `main.c` - Main application code and hardware setup
-- `GC9A01.c` - Display driver implementation
-- `GC9A01.h` - Driver header file with interface definitions
-- `colors.h` - Color definitions in RGB565 format
-
-## Initial Setup
-
-1. Clone the project with submodules:
+### Pico Firmware
 ```bash
-git clone --recursive [your-repo-url]
-cd [project-directory]
-```
-2. if you forgot to clone with --recursive, just run this now to init the pico sdk
-```bash
-git submodule update --init
-```
-
-## Building 
-```bash
-# Create and enter build directory
-mkdir -p build && cd build
-
-# Clean build directory if needed
-rm -rf *
-
-# Generate build files and compile
+mkdir build && cd build
 cmake ..
 make
 ```
+Flash the resulting `display_test.uf2` file to your Pico.
 
-## Flashing via Command Line (linux / mac)
-
-1. Identify the pico
-
+### Host Application 
 ```bash
-# Put Pico in BOOTSEL mode (hold BOOTSEL button while plugging in)
-# Then list all block devices
-lsblk
-
-# Or check kernel messages for the most recently connected device
-dmesg | tail
+zig build
 ```
 
-example output:
+## Usage
+
+Run the host application:
 ```bash
-sda      8:0    1   1.9G  0 disk 
-└─sda1   8:1    1   1.9G  0 part /media/user/RPI-RP2
+sudo zig build run
 ```
 
-2. Create a mount point if it doesn't exist
-```bash
-sudo mkdir -p /mnt/pico
+Available commands:
+1. Checkerboard - Black and white checkerboard pattern
+2. Stripes - Red and blue stripes
+3. Gradient - Red gradient
+4. Image - Send PNG image to display
+5. Exit
+
+For image display, the PNG must be:
+- 240x240 pixels
+- RGB format (will be converted to RGB565)
+
+## Image Transfer Protocol
+
+The host and device communicate over USB serial (115200 baud) using a simple protocol:
+
+```mermaid
+sequenceDiagram
+    participant H as Host (Zig)
+    participant P as Pico
+    
+    Note over H,P: Start Image Transfer
+    H->>P: START_MARKER ('S')
+    P-->>H: ACK ('A')
+    
+    H->>P: IMAGE_COMMAND ('I')
+    P-->>H: ACK ('A')
+    
+    H->>P: Size (4 bytes, big endian)
+    Note right of P: Size must be<br/>240x240x2 bytes<br/>(115200 bytes)
+    P-->>H: ACK ('A')
+    
+    loop Until all data sent
+        H->>P: Data Chunk (512 bytes)
+        P-->>H: ACK ('A')
+    end
+    
+    H->>P: END_MARKER ('E')
+    P-->>H: ACK ('A')
+    Note over H,P: Transfer Complete
 ```
 
-3. Mount it
-```bash
-# Replace sda1 with your device (could be sdb1, sdc1, etc.)
-sudo mount /dev/sda1 /mnt/pico
-```
+### Protocol Details:
 
-4. Copy the UF2 File to the pico
-```bash
-sudo cp display_test.uf2 /mnt/pico/
-```
+1. Host sends START_MARKER ('S')
+   - Indicates start of image transfer
+   - Pico responds with ACK ('A')
 
-5. Unmount or suffer each time you plug it back in
+2. Host sends IMAGE_COMMAND ('I')
+   - Puts Pico in image receive mode
+   - Pico responds with ACK ('A')
 
-```bash
-sudo umount /mnt/pico
-```
+3. Host sends image size (4 bytes)
+   - Big endian format
+   - Must be 115200 bytes (240x240x2)
+   - Pico responds with ACK ('A')
 
-#### Bonus oneliner
-```bash
-# From build directory
-rm -rf * && cmake .. && make && sudo cp display_test.uf2 /mnt/pico/
-```
+4. Host sends image data in chunks
+   - Each chunk is 512 bytes
+   - Last chunk may be smaller
+   - Pico responds with ACK after each chunk
 
+5. Host sends END_MARKER ('E')
+   - Indicates end of transfer
+   - Pico responds with final ACK ('A')
 
+### Error Handling
 
-
+- Timeouts: Each read operation has a 1-second timeout
+- Size validation: Pico verifies image size matches display requirements
+- Retries: Host will retry up to 3 times when waiting for ACK
+- Logging: Both sides log operation progress for debugging
