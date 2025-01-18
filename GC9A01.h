@@ -8,11 +8,23 @@
 extern "C" {
 #endif
 
-// Color modes
+// Command codes:
+#define COL_ADDR_SET        0x2A
+#define ROW_ADDR_SET        0x2B
+#define MEM_WR              0x2C
 #define COLOR_MODE          0x3A
 #define COLOR_MODE__12_BIT  0x03
 #define COLOR_MODE__16_BIT  0x05
 #define COLOR_MODE__18_BIT  0x06
+#define MEM_WR_CONT         0x3C
+#define GC9A01_COL_ADDR_SET        0x2A
+#define GC9A01_ROW_ADDR_SET        0x2B
+#define GC9A01_MEM_WR              0x2C
+#define GC9A01_MEM_WR_CONT         0x3C
+#define GC9A01_COLOR_MODE          0x3A
+#define GC9A01_COLOR_MODE__12_BIT  0x03
+#define GC9A01_COLOR_MODE__16_BIT  0x05
+#define GC9A01_COLOR_MODE__18_BIT  0x06
 
 // Orientation
 #define ORIENTATION_0   0x18
@@ -27,6 +39,9 @@ void GC9A01_set_data_command(uint8_t val);
 void GC9A01_set_chip_select(uint8_t val);
 void GC9A01_delay(uint16_t ms);
 void GC9A01_spi_tx(uint8_t *data, size_t len);
+
+// Helper function to write a command
+void GC9A01_write_command(uint8_t cmd);
 
 struct GC9A01_point {
     uint16_t X, Y;

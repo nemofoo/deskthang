@@ -6,6 +6,7 @@
 #include "colors.h"
 
 #define SPI_BAUD 10000000  // 10MHz
+#define IMAGE_SIZE (240 * 240 * 2)  // 240x240 pixels, 2 bytes per pixel (RGB565)
 
 // Pin definitions
 #define PIN_MOSI 19
@@ -56,6 +57,41 @@ void display_init(void) {
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
     
     GC9A01_init();
+}
+
+void display_raw_image(void) {
+    struct GC9A01_frame frame = {{0,0}, {239,239}};
+    GC9A01_set_frame(frame);
+    
+    // Start the write operation
+    GC9A01_write_command(GC9A01_MEM_WR);
+    
+    // Buffer for receiving image data
+    uint8_t buffer[512];
+    size_t total_received = 0;
+    
+    // Set data mode for the entire transfer
+    GC9A01_set_data_command(1);
+    GC9A01_set_chip_select(0);
+    
+    while (total_received < IMAGE_SIZE) {
+        // Read data in chunks
+        int bytes_read = 0;
+        while (bytes_read < sizeof(buffer) && total_received + bytes_read < IMAGE_SIZE) {
+            int c = getchar_timeout_us(100000);
+            if (c != PICO_ERROR_TIMEOUT) {
+                buffer[bytes_read++] = (uint8_t)c;
+            }
+        }
+        
+        if (bytes_read > 0) {
+            // Send the chunk to display
+            GC9A01_spi_tx(buffer, bytes_read);
+            total_received += bytes_read;
+        }
+    }
+    
+    GC9A01_set_chip_select(1);
 }
 
 void test_pattern_checkerboard(void) {
@@ -134,6 +170,9 @@ void set_display_pattern(char pattern) {
             break;
         case '3':
             test_pattern_gradient();
+            break;
+        case 'I':
+            display_raw_image();
             break;
     }
 }

@@ -2,24 +2,14 @@
 
 #define ORIENTATION 2   // Set the display orientation 0,1,2,3
 
-// Command codes:
-#define COL_ADDR_SET        0x2A
-#define ROW_ADDR_SET        0x2B
-#define MEM_WR              0x2C
-#define COLOR_MODE          0x3A
-#define COLOR_MODE__12_BIT  0x03
-#define COLOR_MODE__16_BIT  0x05
-#define COLOR_MODE__18_BIT  0x06
-#define MEM_WR_CONT         0x3C
-
-static void GC9A01_write_command(uint8_t cmd) {
+void GC9A01_write_command(uint8_t cmd) {
     GC9A01_set_data_command(0);
     GC9A01_set_chip_select(0);
     GC9A01_spi_tx(&cmd, sizeof(cmd));
     GC9A01_set_chip_select(1);
 }
 
-static void GC9A01_write_data(uint8_t *data, size_t len) {
+void GC9A01_write_data(uint8_t *data, size_t len) {
     GC9A01_set_data_command(1);
     GC9A01_set_chip_select(0);
     GC9A01_spi_tx(data, len);
@@ -105,7 +95,7 @@ void GC9A01_init(void) {
     GC9A01_write_byte(0x88);
 #endif
     
-    GC9A01_write_command(COLOR_MODE);
+    GC9A01_write_command(GC9A01_COLOR_MODE);
     GC9A01_write_byte(COLOR_MODE__16_BIT);
     
     GC9A01_write_command(0x90);
@@ -289,14 +279,14 @@ void GC9A01_set_frame(struct GC9A01_frame frame) {
 
     uint8_t data[4];
     
-    GC9A01_write_command(COL_ADDR_SET);
+    GC9A01_write_command(GC9A01_COL_ADDR_SET);
     data[0] = (frame.start.X >> 8) & 0xFF;
     data[1] = frame.start.X & 0xFF;
     data[2] = (frame.end.X >> 8) & 0xFF;
     data[3] = frame.end.X & 0xFF;
     GC9A01_write_data(data, sizeof(data));
 
-    GC9A01_write_command(ROW_ADDR_SET);
+    GC9A01_write_command(GC9A01_ROW_ADDR_SET);
     data[0] = (frame.start.Y >> 8) & 0xFF;
     data[1] = frame.start.Y & 0xFF;
     data[2] = (frame.end.Y >> 8) & 0xFF;
