@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "pico/stdlib.h"    // Add this for stdio_init_all() and sleep_ms()
+#include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
 #include "GC9A01.h"
@@ -55,20 +55,42 @@ void display_init(void) {
     spi_init(SPI_PORT, SPI_BAUD);
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
     
-    GC9A01_init();  // This will use the Arduino initialization sequence
+    GC9A01_init();
 }
 
-void test_pattern(void) {
+void test_pattern_checkerboard(void) {
     struct GC9A01_frame frame = {{0,0}, {239,239}};
     GC9A01_set_frame(frame);
     
-    uint16_t colors[] = {COLOR_RED, COLOR_GREEN, COLOR_BLUE};
+    uint16_t colors[] = {COLOR_BLACK, COLOR_WHITE};
     uint8_t color_bytes[2];
     
     for(int y = 0; y < 240; y++) {
-        uint16_t current_color = colors[y / 80];  // Change color every 80 pixels
-        color_bytes[0] = current_color >> 8;      // High byte
-        color_bytes[1] = current_color & 0xFF;    // Low byte
+        for(int x = 0; x < 240; x++) {
+            uint16_t current_color = colors[((x/20) + (y/20)) % 2];
+            color_bytes[0] = current_color >> 8;
+            color_bytes[1] = current_color & 0xFF;
+            
+            if(x == 0 && y == 0) {
+                GC9A01_write(color_bytes, 2);
+            } else {
+                GC9A01_write_continue(color_bytes, 2);
+            }
+        }
+    }
+}
+
+void test_pattern_stripes(void) {
+    struct GC9A01_frame frame = {{0,0}, {239,239}};
+    GC9A01_set_frame(frame);
+    
+    uint16_t colors[] = {COLOR_RED, COLOR_BLUE};
+    uint8_t color_bytes[2];
+    
+    for(int y = 0; y < 240; y++) {
+        uint16_t current_color = colors[(y/30) % 2];
+        color_bytes[0] = current_color >> 8;
+        color_bytes[1] = current_color & 0xFF;
         
         for(int x = 0; x < 240; x++) {
             if(x == 0 && y == 0) {
@@ -80,13 +102,55 @@ void test_pattern(void) {
     }
 }
 
+void test_pattern_gradient(void) {
+    struct GC9A01_frame frame = {{0,0}, {239,239}};
+    GC9A01_set_frame(frame);
+    
+    uint8_t color_bytes[2];
+    
+    for(int y = 0; y < 240; y++) {
+        for(int x = 0; x < 240; x++) {
+            uint16_t current_color = RGB565(x & 0xFF, 0, 0);
+            color_bytes[0] = current_color >> 8;
+            color_bytes[1] = current_color & 0xFF;
+            
+            if(x == 0 && y == 0) {
+                GC9A01_write(color_bytes, 2);
+            } else {
+                GC9A01_write_continue(color_bytes, 2);
+            }
+        }
+    }
+}
+
+// Function to handle display pattern selection
+void set_display_pattern(char pattern) {
+    switch(pattern) {
+        case '1':
+            test_pattern_checkerboard();
+            break;
+        case '2':
+            test_pattern_stripes();
+            break;
+        case '3':
+            test_pattern_gradient();
+            break;
+    }
+}
+
 int main() {
     stdio_init_all();
     display_init();
     
+    // Show initial pattern
+    test_pattern_checkerboard();
+    
+    // Main loop to handle serial commands
     while(1) {
-        test_pattern();
-        sleep_ms(1000);
+        int c = getchar_timeout_us(100000); // Check every 100ms
+        if (c != PICO_ERROR_TIMEOUT) {
+            set_display_pattern((char)c);
+        }
     }
     
     return 0;
