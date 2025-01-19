@@ -28,9 +28,22 @@ cd host
 zig build
 ```
 
-## Communication Protocol (v1)
+## Protocol Overview
 
-All host-device communication occurs over USB serial using a packet-based protocol:
+The project uses a state machine-based protocol for reliable communication between host and device. See the protocol documentation for complete details:
+
+- [Protocol Architecture](docs/protocol_architecture.md)
+- [State Machine](docs/protocol_state_machine.md)
+- [State Transitions](docs/protocol_transitions.md)
+- [Protocol Modules](docs/protocol_modules.md)
+
+### Core Features
+
+- Version: 1 (sole supported version)
+- State machine architecture
+- Robust error handling and recovery
+- Modular implementation
+- Comprehensive validation
 
 ### Packet Structure
 
@@ -50,18 +63,6 @@ All host-device communication occurs over USB serial using a packet-based protoc
 - ACK (0x1F): Acknowledgment
 - NACK (0x20): Negative acknowledgment
 
-### Protocol Features
-
-- Version: 1 (the only supported protocol version)
-- CRC32 error detection
-- Sequence numbering for packet ordering
-- Automatic retransmission on errors
-- Exponential backoff retry mechanism
-- Maximum 8 retries per packet
-- Base timeout of 1000ms
-- Retry delays between 50ms and 1000ms
-- Data chunks of 256 bytes
-
 ### Commands
 
 - I: Start image transfer (RGB565 format, 240×240)
@@ -71,16 +72,76 @@ All host-device communication occurs over USB serial using a packet-based protoc
 - 3: Show gradient pattern
 - H: Display help/command list
 
+### Protocol States
+
+1. HARDWARE_INIT: Initial hardware setup
+2. DISPLAY_INIT: Display controller initialization
+3. IDLE: Default waiting state
+4. SYNCING: Protocol synchronization
+5. READY: Connection established
+6. COMMAND_PROCESSING: Handling commands
+7. DATA_TRANSFER: Image transfer
+8. ERROR: Error handling and recovery
+
 ### Error Handling
 
-The protocol handles:
+The protocol implements comprehensive error handling:
 
-- Invalid synchronization
-- Checksum mismatches
-- Sequence errors
-- Timeouts
-- Negative acknowledgments
-- Invalid packet types
+- State validation
+- Packet integrity checks
+- Sequence validation
+- Timeout management
+- Automatic retries with exponential backoff
+- Error logging and recovery
+
+Key parameters:
+- Maximum 8 retries per operation
+- Base timeout: 1000ms
+- Retry delays: 50ms to 1000ms (with exponential backoff)
+- Data chunks: 256 bytes
+
+## Module Organization
+
+### Firmware (C)
+
+```
+src/
+├── hardware/           # Hardware abstraction layer
+│   ├── hardware.c     # Core hardware interface
+│   ├── spi.c         # SPI implementation
+│   ├── gpio.c        # GPIO implementation
+│   └── display.c     # Display driver
+│
+├── protocol/          # Protocol implementation
+│   ├── protocol.c    # Core protocol handler
+│   ├── packet.c      # Packet management
+│   ├── command.c     # Command processing
+│   └── transfer.c    # Data transfer
+│
+├── state/            # State management
+│   ├── state.c       # State machine core
+│   ├── context.c     # State context
+│   └── transition.c  # State transitions
+│
+└── error/            # Error handling
+    ├── error.c       # Error management
+    ├── recovery.c    # Recovery strategies
+    └── logging.c     # Error logging
+```
+
+### Host Application (Zig)
+
+```
+host/
+├── build.zig         # Zig build configuration
+├── build.zig.zon     # Zig dependency manifest
+│
+└── src/              # Source code
+    ├── main.zig      # Application entry point
+    ├── protocol.zig  # Protocol implementation
+    ├── picocom.zig   # Serial communication
+    └── root.zig      # Root namespace
+```
 
 ## Hardware Setup
 
@@ -100,17 +161,61 @@ The protocol handles:
 - CMake 3.13 or later
 - libpng for the host application
 
-## Serial Communication Setup
+## Serial Communication
 
 - Baud rate: 115200
 - Flow control: None
-- Debug output: Separate channel, or use a prefix like "DBG:" on the same channel that the host filters out from protocol data.
+- Protocol channel: Clean protocol data only
+- Debug channel: Optional separate channel
+  - If single channel used: Prefix debug with "DBG:"
+  - Never mix debug and protocol data
 
-## Protocol Framing
+## Implementation Requirements
 
-- The first packet from the host begins with SYNC (0x1B).
-- All subsequent packet headers align on 8-byte boundaries.
-- The device must not send non-protocol data on the protocol channel.
-- If debug output is needed during protocol operation and there is only a single interface:
-  - Prefix logs with "DBG:" so the host ignores them for protocol parsing.
-  - Never mix debug and protocol bytes in the same packet.
+### Host Implementation
+- Must implement full state machine
+- Must handle all error conditions
+- Must support retry mechanisms
+- Must validate all transitions
+
+### Device Implementation
+- Must maintain consistent state
+- Must respond to all commands
+- Must implement error recovery
+- Must validate all packets
+
+## Debug Support
+
+- State transition logging
+- Error context tracking
+- Performance monitoring
+- Resource usage tracking
+- Timing statistics
+
+## Testing Requirements
+
+1. State Transitions
+- Test all valid transitions
+- Verify invalid transitions are rejected
+- Test boundary conditions
+- Validate state history
+
+2. Error Handling
+- Test all error conditions
+- Verify recovery paths
+- Test retry mechanisms
+- Validate error logging
+
+3. Resource Management
+- Test buffer allocation
+- Verify cleanup on exit
+- Test resource limits
+- Validate memory usage
+
+4. Performance
+- Measure transition times
+- Track error rates
+- Monitor resource usage
+- Profile critical paths
+
+For detailed protocol implementation information, refer to the documentation in the docs/ directory.
