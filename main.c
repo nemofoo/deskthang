@@ -2,6 +2,8 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
+#include "pico/stdio/driver.h"
+#include "pico/stdio_usb.h"
 #include "GC9A01.h"
 #include "colors.h"
 
@@ -75,18 +77,6 @@ void display_raw_image(void) {
     // Buffer for receiving image data
     uint8_t buffer[512];
     size_t total_received = 0;
-    
-    printf("Waiting for START_MARKER\n");
-    int start_marker = getchar_timeout_us(1000000); // 1 second timeout
-    if (start_marker == PICO_ERROR_TIMEOUT) {
-        printf("Timeout waiting for START_MARKER\n");
-        return;
-    }
-    debug_print_hex(start_marker);
-    
-    // Send ACK
-    printf("Sending ACK\n");
-    putchar('A');
     
     printf("Waiting for IMAGE_COMMAND\n");
     int cmd = getchar_timeout_us(1000000);
@@ -227,6 +217,9 @@ void test_pattern_gradient(void) {
 // Function to handle display pattern selection
 void set_display_pattern(char pattern) {
     switch(pattern) {
+        case 'I': // Image
+            display_raw_image();
+            break;
         case '1':
             test_pattern_checkerboard();
             break;
@@ -236,16 +229,14 @@ void set_display_pattern(char pattern) {
         case '3':
             test_pattern_gradient();
             break;
-        case 'I':
-            display_raw_image();
-            break;
     }
 }
 
 int main() {
     stdio_init_all();
     sleep_ms(2000);  // Wait for USB CDC to be ready
-    printf("Display test starting...\n");  // Test print
+    printf("Display test starting...\n");
+    debug_flush();
     
     display_init();
     printf("Display initialized\n");
@@ -263,6 +254,7 @@ int main() {
         int c = getchar_timeout_us(100000); // Check every 100ms
         if (c != PICO_ERROR_TIMEOUT) {
             printf("Received command: %c\n", (char)c);
+            fflush(stdout);
             set_display_pattern((char)c);
         }
     }

@@ -1,11 +1,84 @@
-# DeskThang
+# DeskThang Display Project
 
-A Raspberry Pi Pico based desktop display device. Uses the GC9A01 240x240 round LCD display.
+A desk display project using Raspberry Pi Pico (RP2040) with a GC9A01 LCD screen. The project consists of a Pico firmware and a Zig host application that can push images and patterns to the display over USB.
 
-## Hardware
+## Setup
 
-- Raspberry Pi Pico (RP2040)
-- GC9A01 240x240 Round LCD Display
+1. Clone the repository with submodules:
+```bash
+git clone [repository-url]
+git submodule update --init --recursive
+```
+
+2. Build the Pico firmware:
+```bash
+cd pico
+mkdir build
+cd build
+cmake ..
+make
+```
+
+3. Build the Zig host application:
+```bash
+cd host
+zig build
+```
+
+## Communication Protocol
+
+The host and Pico communicate over USB serial (ttyACM0) using a simple protocol:
+
+```mermaid
+sequenceDiagram
+    participant Host as Host (Zig)
+    participant Main as Pico Main Loop
+    participant Handler as Image Handler
+    
+    Note over Host,Handler: Image Transfer Protocol
+    
+    Host->>Main: IMAGE_COMMAND ('I')
+    Note right of Main: Switch to blocking<br/>image receive mode
+    Main->>Handler: Call display_raw_image()
+    activate Handler
+    Handler-->>Host: ACK ('A')
+    
+    Host->>Handler: Image Size (4 bytes)
+    Note right of Host: Size = 115200 bytes<br/>(240x240x2 RGB565)
+    Handler-->>Host: ACK ('A')
+    
+    loop Until all data sent
+        Host->>Handler: Data Chunk (512 bytes)
+        Handler-->>Host: ACK ('A')
+    end
+    
+    Host->>Handler: END_MARKER ('E')
+    Handler-->>Host: ACK ('A')
+    deactivate Handler
+    
+    Note right of Handler: Return to main loop
+    Handler->>Main: Return
+    Main->>Main: Resume Pattern Switch
+```
+
+### Protocol Details:
+- Image data is sent in RGB565 format (2 bytes per pixel)
+- Display resolution is 240x240 pixels
+- Data is sent in 512-byte chunks
+- Each command/chunk requires acknowledgment ('A')
+- Timeout of 5000ms for each operation
+- Up to 3 retries per operation
+
+### Commands:
+- 'I': Start image transfer
+- 'E': End image transfer
+- '1': Show checkerboard pattern
+- '2': Show stripe pattern
+- '3': Show gradient pattern
+
+## Hardware Setup
+- Screen: GC9A01 240x240 Round LCD
+- Microcontroller: Raspberry Pi Pico (RP2040)
 - Connections:
   - MOSI: GPIO 19
   - SCK: GPIO 18
@@ -13,96 +86,8 @@ A Raspberry Pi Pico based desktop display device. Uses the GC9A01 240x240 round 
   - DC: GPIO 16
   - RST: GPIO 20
 
-## Building
-
-### Pico Firmware
-```bash
-mkdir build && cd build
-cmake ..
-make
-```
-Flash the resulting `display_test.uf2` file to your Pico.
-
-### Host Application 
-```bash
-zig build
-```
-
-## Usage
-
-Run the host application:
-```bash
-sudo zig build run
-```
-
-Available commands:
-1. Checkerboard - Black and white checkerboard pattern
-2. Stripes - Red and blue stripes
-3. Gradient - Red gradient
-4. Image - Send PNG image to display
-5. Exit
-
-For image display, the PNG must be:
-- 240x240 pixels
-- RGB format (will be converted to RGB565)
-
-## Image Transfer Protocol
-
-The host and device communicate over USB serial (115200 baud) using a simple protocol:
-
-```mermaid
-sequenceDiagram
-    participant H as Host (Zig)
-    participant P as Pico
-    
-    Note over H,P: Start Image Transfer
-    H->>P: START_MARKER ('S')
-    P-->>H: ACK ('A')
-    
-    H->>P: IMAGE_COMMAND ('I')
-    P-->>H: ACK ('A')
-    
-    H->>P: Size (4 bytes, big endian)
-    Note right of P: Size must be<br/>240x240x2 bytes<br/>(115200 bytes)
-    P-->>H: ACK ('A')
-    
-    loop Until all data sent
-        H->>P: Data Chunk (512 bytes)
-        P-->>H: ACK ('A')
-    end
-    
-    H->>P: END_MARKER ('E')
-    P-->>H: ACK ('A')
-    Note over H,P: Transfer Complete
-```
-
-### Protocol Details:
-
-1. Host sends START_MARKER ('S')
-   - Indicates start of image transfer
-   - Pico responds with ACK ('A')
-
-2. Host sends IMAGE_COMMAND ('I')
-   - Puts Pico in image receive mode
-   - Pico responds with ACK ('A')
-
-3. Host sends image size (4 bytes)
-   - Big endian format
-   - Must be 115200 bytes (240x240x2)
-   - Pico responds with ACK ('A')
-
-4. Host sends image data in chunks
-   - Each chunk is 512 bytes
-   - Last chunk may be smaller
-   - Pico responds with ACK after each chunk
-
-5. Host sends END_MARKER ('E')
-   - Indicates end of transfer
-   - Pico responds with final ACK ('A')
-
-### Error Handling
-
-- Timeouts: Each read operation has a 1-second timeout
-- Size validation: Pico verifies image size matches display requirements
-- Retries: Host will retry up to 3 times when waiting for ACK
-- Logging: Both sides log operation progress for debugging
+## Dependencies
+- Pico SDK (submodule)
+- Zig 0.11.0 or later
+- CMake 3.13 or later
+- libpng for the host application

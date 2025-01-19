@@ -9,6 +9,10 @@ project(gc9a01_display)
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+set(PICO_ENABLE_STDIO_USB 1)
+set(PICO_ENABLE_STDIO_UART 0)
+set(PICO_USB_ENABLE_CDC_COMPOSITE 1)
+
 add_executable(
     display_test
     main.c
@@ -19,11 +23,8 @@ target_link_libraries(
     display_test 
     pico_stdlib
     hardware_spi
+    pico_stdio_usb
 )
-
-# Enable USB for stdio
-pico_enable_stdio_usb(display_test 1)
-pico_enable_stdio_uart(display_test 0)
 
 # create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(display_test)
