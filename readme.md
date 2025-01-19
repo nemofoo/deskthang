@@ -87,3 +87,22 @@ The protocol handles various error conditions:
 - Zig 0.11.0 or later
 - CMake 3.13 or later
 - libpng for the host application
+
+### Serial Communication Setup
+- Baud rate: 115200
+- Flow control: None
+- Debug output: Separate channel
+  - Host <-> Device protocol data on USB CDC first interface
+  - Device debug output on USB CDC second interface
+  - OR if single interface:
+    - Device prefixes all debug with "DBG:" 
+    - Host filters out lines starting with "DBG:" before protocol parsing
+    - Protocol data never starts with "DBG:"
+
+### Protocol Framing
+1. Initial packet must start with SYNC (0x1B) marker
+2. All subsequent packet headers must align on 8-byte boundaries
+3. Device must not send any non-protocol data on protocol channel
+4. If debug output is needed during protocol operation:
+   - Must use separate channel, OR
+   - Must buffer until protocol operation completes

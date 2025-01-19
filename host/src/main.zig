@@ -564,7 +564,7 @@ pub fn main() !void {
                     },
                     '4' => {
                         try stdout.print("Loading image from host/240.png...\n", .{});
-                        const rgb888_data = decodePNG(allocator, "host/240.png") catch |err| {
+                        const rgb888_data = decodePNG(allocator, "/home/nemo/Dev/deskthang/host/240.png") catch |err| {
                             switch (err) {
                                 error.InvalidImageDimensions => {
                                     try stdout.print("Error: Invalid image dimensions\n", .{});
