@@ -180,7 +180,7 @@ typedef struct {
     
     // Error handling
     uint8_t retry_count;      // Current retry count
-    ErrorContext last_error;  // Last error details
+    ErrorDetails last_error;  // Last error details
     
     // Validation
     bool transition_valid;    // Last transition valid
@@ -198,62 +198,130 @@ The error system is tightly integrated with the state machine:
 - Error context determines recovery strategy
 - Recovery success determines next state
 
-```mermaid
-sequenceDiagram
-    participant State as Current State
-    participant Error as Error Handler
-    participant Recovery as Recovery System
-    participant Next as Next State
-    
-    State->>Error: Detect Error
-    Error->>State: Transition to ERROR
-    Error->>Recovery: Attempt Recovery
-    
-    alt Recovery Successful
-        Recovery->>Next: Transition to Recovery Target
-    else Recovery Failed
-        Recovery->>Error: Remain in ERROR
-    end
+### Error and Recovery Integration
+
+The error and recovery systems work together through the following flow:
+
+1. Error Detection
+   - System detects error condition
+   - ErrorDetails structure is populated
+   - Error is logged with ERR! prefix
+
+2. Recovery Selection
+   - Recovery strategy chosen based on error type and severity
+   - Available strategies: NONE, RETRY, RESET_STATE, REINIT, REBOOT
+   - Strategy execution managed by recovery handlers
+
+3. Recovery Execution
+   - Handler attempts recovery with configured retries
+   - Uses exponential backoff between attempts
+   - Reports results through RecoveryResult structure
+
+4. State Transition
+   - Success: Move to recovery target state
+   - Failure: Remain in ERROR state
+
+Example flow:
+```c
+// Error detection
+error_report(ERROR_TYPE_HARDWARE, ERROR_SEVERITY_ERROR, 1001, "SPI Init Failed");
+
+// Recovery attempt
+ErrorDetails *error = error_get_last();
+if (error && error_is_recoverable(error)) {
+    RecoveryResult result = recovery_attempt(error);
+    logging_recovery(&result);
+}
 ```
 
 ```c
 typedef struct {
     // Error details
-    ErrorType type;              // Error classification
-    SystemState source_state;    // State where error occurred
-    uint32_t timestamp;         // Error timestamp
-    
-    // Context data
-    uint32_t error_code;        // Specific error code
-    char message[64];           // Error description
-    
-    // Recovery
-    uint8_t retry_count;        // Recovery attempts
-    uint32_t backoff_ms;        // Current backoff delay
-    bool recoverable;           // Can be recovered from
-} ErrorContext;
+    ErrorType type;          // Error type
+    ErrorSeverity severity;  // Error severity
+    uint32_t code;          // Error code
+    uint32_t timestamp;     // When error occurred
+    SystemState state;      // State when error occurred
+    char message[128];      // Error message
+    char context[256];      // Additional context
+    bool recoverable;       // Can be recovered from
+} ErrorDetails;
 ```
 
-### Error Handling System
+### Error Code Ranges
 
-The error system provides:
-1. Error Tracking
-   - Category and severity classification
-   - Error codes and messages
-   - Recoverable status
-   - System state context
+Each error type has a dedicated range of error codes:
 
-2. Recovery Management
-   - Multiple recovery strategies (NONE, RETRY, RESET_STATE, REINIT, REBOOT)
-   - Strategy selection based on error type
-   - Automatic retry with backoff
-   - Recovery success tracking
+| Error Type | Code Range | Description |
+|------------|------------|-------------|
+| HARDWARE   | 1000-1999  | Hardware interface errors (SPI, GPIO, Display) |
+| PROTOCOL   | 2000-2999  | Protocol handling errors (packets, sync) |
+| STATE      | 3000-3999  | State machine errors (transitions, validation) |
+| COMMAND    | 4000-4999  | Command processing errors (validation, execution) |
+| TRANSFER   | 5000-5999  | Data transfer errors (chunks, timeouts) |
+| SYSTEM     | 6000-6999  | System level errors (memory, resources) |
 
-3. Logging Integration
-   - Structured error logging with context
-   - Recovery attempt logging
-   - Debug packet support
-   - USB CDC transmission
+### Recovery Strategies
+
+1. RECOVERY_NONE
+   - Used when error is not recoverable
+   - No recovery action taken
+   - System remains in error state
+
+2. RECOVERY_RETRY
+   - Simple retry of failed operation
+   - Uses exponential backoff
+   - Limited by MAX_RETRIES
+
+3. RECOVERY_RESET_STATE
+   - Resets state machine to known state
+   - Clears error condition
+   - Maintains hardware configuration
+
+4. RECOVERY_REINIT
+   - Full hardware reinitialization
+   - Used for hardware failures
+   - More aggressive than state reset
+
+5. RECOVERY_REBOOT
+   - Complete system restart
+   - Last resort recovery
+   - Only if allow_reboot is true
+
+### Error Recovery Mapping
+
+| Error Type | Severity | Recovery Strategy | Example |
+|------------|----------|------------------|----------|
+| HARDWARE   | FATAL    | REBOOT/NONE      | SPI failure |
+| HARDWARE   | ERROR    | REINIT           | Display timeout |
+| PROTOCOL   | ERROR    | RETRY            | Bad checksum |
+| STATE      | ERROR    | RESET_STATE      | Invalid transition |
+| COMMAND    | WARNING  | NONE             | Unknown command |
+| TRANSFER   | ERROR    | RETRY            | Chunk timeout |
+| SYSTEM     | FATAL    | REBOOT           | Memory error |
+
+### Error Logging Format
+
+Error messages follow this format:
+```
+[LOG] [timestamp] message (ERR!) | Type: type, Severity: severity, Code: code, Recoverable: yes/no
+```
+
+Examples:
+```
+[LOG] [1234] SPI Init Failed (ERR!) | Type: HARDWARE, Severity: FATAL, Code: 1001, Recoverable: No
+[LOG] [1235] Invalid Packet (ERR!) | Type: PROTOCOL, Severity: ERROR, Code: 2001, Recoverable: Yes
+[LOG] [1236] Invalid State (ERR!) | Type: STATE, Severity: ERROR, Code: 3001, Recoverable: Yes
+```
+
+The logging system automatically:
+- Adds timestamps
+- Formats error details
+- Prefixes errors with ERR!
+- Includes recovery status
+
+1. Error Detection
+   - System detects error condition
 
 ## Implementation Requirements
 
@@ -318,20 +386,25 @@ uint32_t calculate_backoff(uint8_t retry_count) {
 ### 3. Retry Strategy
 
 ```c
-bool should_retry(ErrorContext *ctx) {
+bool recovery_should_retry(uint32_t attempt_count) {
     // Check retry count
-    if (ctx->retry_count >= MAX_RETRIES) {
+    if (attempt_count >= MAX_RETRIES) {
         return false;
     }
     
-    // Calculate backoff
-    uint32_t delay = calculate_backoff(ctx->retry_count);
-    ctx->backoff_ms = delay;
-    
-    // Update context
-    ctx->retry_count++;
-    
     return true;
+}
+
+uint32_t recovery_get_retry_delay(uint32_t attempt_count) {
+    uint32_t delay = MIN_RETRY_DELAY_MS;
+    
+    // Exponential backoff with jitter
+    for (uint32_t i = 0; i < attempt_count && delay < MAX_RETRY_DELAY_MS; i++) {
+        delay *= 2;
+        delay += (rand() % 50);  // Add jitter
+    }
+    
+    return min(delay, MAX_RETRY_DELAY_MS);
 }
 ```
 
@@ -364,3 +437,14 @@ bool should_retry(ErrorContext *ctx) {
 - Test sequence handling
 - Verify checksum calculation
 - Test command processing
+
+Strategy selection is based on:
+ - Error severity (INFO, WARNING, ERROR, FATAL)
+ - Error type (HARDWARE, STATE, etc.)
+ - Error context (recoverable flag)
+ - System configuration (allow_reboot)
+
+Example log output:
+```
+[LOG] [1234] Hardware initialization failed (ERR!) | Type: HARDWARE, Severity: FATAL, Code: 1001
+```

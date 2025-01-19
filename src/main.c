@@ -84,19 +84,19 @@ static bool init_subsystems(void) {
     
     // Initialize hardware
     if (!hardware_init(&hw_config)) {
-        error_report(ERROR_CAT_HARDWARE, ERROR_SEVERITY_FATAL, 1, "Hardware initialization failed");
+        error_report(ERROR_TYPE_HARDWARE, ERROR_SEVERITY_FATAL, 1, "Hardware initialization failed");
         return false;
     }
     
     // Initialize display
     if (!display_init(&hw_config, &display_config)) {
-        error_report(ERROR_CAT_HARDWARE, ERROR_SEVERITY_FATAL, 2, "Display initialization failed");
+        error_report(ERROR_TYPE_HARDWARE, ERROR_SEVERITY_FATAL, 2, "Display initialization failed");
         return false;
     }
     
     // Initialize protocol handler
     if (!protocol_init()) {
-        error_report(ERROR_CAT_PROTOCOL, ERROR_SEVERITY_FATAL, 3, "Protocol initialization failed");
+        error_report(ERROR_TYPE_PROTOCOL, ERROR_SEVERITY_FATAL, 3, "Protocol initialization failed");
         return false;
     }
     

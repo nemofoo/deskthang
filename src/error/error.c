@@ -18,15 +18,15 @@ void error_reset(void) {
 }
 
 // Report a new error
-void error_report(ErrorCategory category, ErrorSeverity severity, uint32_t code, const char *message) {
-    error_report_with_context(category, severity, code, message, NULL);
+void error_report(ErrorType type, ErrorSeverity severity, uint32_t code, const char *message) {
+    error_report_with_context(type, severity, code, message, NULL);
 }
 
 // Report error with context
-void error_report_with_context(ErrorCategory category, ErrorSeverity severity, uint32_t code, 
+void error_report_with_context(ErrorType type, ErrorSeverity severity, uint32_t code, 
                              const char *message, const char *context) {
     // Update last error
-    g_last_error.category = category;
+    g_last_error.type = type;
     g_last_error.severity = severity;
     g_last_error.code = code;
     g_last_error.timestamp = get_system_time();
@@ -78,7 +78,7 @@ ErrorSeverity error_get_severity(uint32_t code) {
 // Debug support
 void error_print_last(void) {
     printf("Last Error:\n");
-    printf("  Category: %s\n", error_category_to_string(g_last_error.category));
+    printf("  Type: %s\n", error_type_to_string(g_last_error.type));
     printf("  Severity: %s\n", error_severity_to_string(g_last_error.severity));
     printf("  Code: %u\n", g_last_error.code);
     printf("  State: %d\n", g_last_error.state);
@@ -99,15 +99,15 @@ const char *error_severity_to_string(ErrorSeverity severity) {
     }
 }
 
-const char *error_category_to_string(ErrorCategory category) {
-    switch (category) {
-        case ERROR_CAT_NONE:     return "NONE";
-        case ERROR_CAT_HARDWARE: return "HARDWARE";
-        case ERROR_CAT_PROTOCOL: return "PROTOCOL";
-        case ERROR_CAT_STATE:    return "STATE";
-        case ERROR_CAT_COMMAND:  return "COMMAND";
-        case ERROR_CAT_TRANSFER: return "TRANSFER";
-        case ERROR_CAT_SYSTEM:   return "SYSTEM";
+const char *error_type_to_string(ErrorType type) {
+    switch (type) {
+        case ERROR_TYPE_NONE:     return "NONE";
+        case ERROR_TYPE_HARDWARE: return "HARDWARE";
+        case ERROR_TYPE_PROTOCOL: return "PROTOCOL";
+        case ERROR_TYPE_STATE:    return "STATE";
+        case ERROR_TYPE_COMMAND:  return "COMMAND";
+        case ERROR_TYPE_TRANSFER: return "TRANSFER";
+        case ERROR_TYPE_SYSTEM:   return "SYSTEM";
         default:                 return "UNKNOWN";
     }
 }

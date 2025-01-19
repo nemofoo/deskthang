@@ -15,25 +15,25 @@ typedef enum {
 
 // Error categories
 typedef enum {
-    ERROR_CAT_NONE,
-    ERROR_CAT_HARDWARE,    // Hardware-related errors
-    ERROR_CAT_PROTOCOL,    // Protocol-related errors
-    ERROR_CAT_STATE,       // State machine errors
-    ERROR_CAT_COMMAND,     // Command processing errors
-    ERROR_CAT_TRANSFER,    // Data transfer errors
-    ERROR_CAT_SYSTEM      // System-level errors
-} ErrorCategory;
+    ERROR_TYPE_NONE,        // No specific type
+    ERROR_TYPE_HARDWARE,    // Hardware-related errors
+    ERROR_TYPE_PROTOCOL,    // Protocol-related errors
+    ERROR_TYPE_STATE,       // State machine errors
+    ERROR_TYPE_COMMAND,     // Command processing errors
+    ERROR_TYPE_TRANSFER,    // Data transfer errors
+    ERROR_TYPE_SYSTEM      // System-level errors
+} ErrorType;
 
 // Error details structure
 typedef struct {
-    ErrorCategory category;     // Error category
-    ErrorSeverity severity;     // Error severity
-    uint32_t code;             // Error code
-    uint32_t timestamp;        // When error occurred
-    SystemState state;         // State when error occurred
-    char message[128];         // Error message
-    char context[256];         // Additional context
-    bool recoverable;          // Can be recovered from
+    ErrorType type;          // Error type (was category)
+    ErrorSeverity severity;  // Error severity
+    uint32_t code;          // Error code
+    uint32_t timestamp;     // When error occurred
+    SystemState state;      // State when error occurred
+    char message[128];      // Error message
+    char context[256];      // Additional context
+    bool recoverable;       // Can be recovered from
 } ErrorDetails;
 
 // Error management functions
@@ -41,8 +41,8 @@ bool error_init(void);
 void error_reset(void);
 
 // Error reporting
-void error_report(ErrorCategory category, ErrorSeverity severity, uint32_t code, const char *message);
-void error_report_with_context(ErrorCategory category, ErrorSeverity severity, uint32_t code, 
+void error_report(ErrorType type, ErrorSeverity severity, uint32_t code, const char *message);
+void error_report_with_context(ErrorType type, ErrorSeverity severity, uint32_t code, 
                              const char *message, const char *context);
 
 // Error query
@@ -56,6 +56,6 @@ ErrorSeverity error_get_severity(uint32_t code);
 // Debug support
 void error_print_last(void);
 const char *error_severity_to_string(ErrorSeverity severity);
-const char *error_category_to_string(ErrorCategory category);
+const char *error_type_to_string(ErrorType type);
 
 #endif // DESKTHANG_ERROR_H

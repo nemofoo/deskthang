@@ -28,3 +28,10 @@ target_link_libraries(
 
 # create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(display_test)
+
+# Add test directory
+add_subdirectory(test)
+
+# Enable testing
+enable_testing()
+add_test(NAME unit_tests COMMAND run_tests)

@@ -71,13 +71,13 @@ void logging_error(const ErrorDetails *error) {
     
     char context[512];
     snprintf(context, sizeof(context),
-             "Category: %s, Severity: %s, Code: %u, Recoverable: %s",
-             error_category_to_string(error->category),
+             "Type: %s, Severity: %s, Code: %u, Recoverable: %s",
+             error_type_to_string(error->type),
              error_severity_to_string(error->severity),
              error->code,
              error->recoverable ? "Yes" : "No");
              
-    logging_write_with_context("Error",
+    logging_write_with_context("ERR!",
                               error->message,
                               context);
 }
@@ -96,14 +96,4 @@ void logging_recovery(const RecoveryResult *result) {
     logging_write_with_context("Recovery",
                               result->message,
                               context);
-}
-
-void logging_write_structured(
-    const char *module,
-    const char *message,
-    const char *context,
-    LogLevel level,
-    uint32_t code
-) {
-    // Implementation needed to match documentation
 }
