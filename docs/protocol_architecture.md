@@ -448,3 +448,34 @@ Example log output:
 ```
 [LOG] [1234] Hardware initialization failed (ERR!) | Type: HARDWARE, Severity: FATAL, Code: 1001
 ```
+
+## Debug Packets
+
+Debug packets contain diagnostic information with the following structure:
+- Module name (32 chars max)
+- Message (256 chars max)
+
+Example debug packet:
+```json
+{
+"type": "DEBUG",
+"module": "Protocol",
+"message": "Version mismatch: Expected v1, got v2"
+}
+```
+## Error Handling
+
+Errors are categorized by:
+- Type: HARDWARE, STATE, etc.
+- Severity: FATAL, WARNING, etc.
+
+Recovery strategies are automatically selected based on error type:
+- HARDWARE errors -> Reinitialize hardware
+- STATE errors -> Reset state machine
+- FATAL errors -> System reboot (if allowed)
+
+Example error packet:
+```json
+
+
+```

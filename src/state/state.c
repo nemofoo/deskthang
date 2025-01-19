@@ -1,7 +1,35 @@
+#include <stdio.h>
 #include "state.h"
 #include "context.h"
 #include "transition.h"
 #include "../error/logging.h"
+#include "../system/time.h"
+
+// Forward declarations for state handlers
+static void hardware_init_entry(void);
+static void hardware_init_exit(void);
+static void hardware_init_error(void *ctx);
+static void display_init_entry(void);
+static void display_init_exit(void);
+static void display_init_error(void *ctx);
+static void idle_entry(void);
+static void idle_exit(void);
+static void idle_error(void *ctx);
+static void syncing_entry(void);
+static void syncing_exit(void);
+static void syncing_error(void *ctx);
+static void ready_entry(void);
+static void ready_exit(void);
+static void ready_error(void *ctx);
+static void command_entry(void);
+static void command_exit(void);
+static void command_error(void *ctx);
+static void transfer_entry(void);
+static void transfer_exit(void);
+static void transfer_error(void *ctx);
+static void error_entry(void);
+static void error_exit(void);
+static void error_error(void *ctx);
 
 // State action handlers for each state
 static const StateActions STATE_ACTIONS[] = {
@@ -47,7 +75,7 @@ static const StateActions STATE_ACTIONS[] = {
     }
 };
 
-// Forward declarations for state action handlers
+// State action handler implementations
 static void hardware_init_entry(void) {
     // Configure SPI interface
     // Set up GPIO pins
@@ -205,10 +233,10 @@ bool state_machine_transition(SystemState next_state, StateCondition condition) 
     // Log transition
     char context[256];
     snprintf(context, sizeof(context),
-        "From %s to %s (%s)",
-        state_to_string(g_state_context.previous),
-        state_to_string(g_state_context.current),
-        condition_to_string(condition));
+             "From %s to %s (%s)",
+             state_to_string(g_state_context.previous),
+             state_to_string(g_state_context.current),
+             condition_to_string(condition));
     logging_write_with_context("State", "State transition", context);
     
     return true;
@@ -331,4 +359,5 @@ bool state_machine_handle_recovery(const ErrorDetails *error) {
     logging_write_with_context("StateMachine", "Recovery attempt", context);
     
     // ... recovery logic ...
+    return true; // TODO: Implement actual recovery logic
 }

@@ -53,12 +53,12 @@ RecoveryStrategy recovery_get_strategy(const ErrorDetails *error) {
     }
     
     // Hardware errors typically need reinitialization
-    if (error->category == ERROR_CAT_HARDWARE) {
+    if (error->type == ERROR_TYPE_HARDWARE) {
         return RECOVERY_REINIT;
     }
     
     // State machine errors need state reset
-    if (error->category == ERROR_CAT_STATE) {
+    if (error->type == ERROR_TYPE_STATE) {
         return RECOVERY_RESET_STATE;
     }
     

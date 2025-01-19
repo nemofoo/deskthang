@@ -1,6 +1,7 @@
 #include "error.h"
 #include <string.h>
 #include <stdio.h>
+#include "../system/time.h"
 #include "../protocol/protocol.h"
 
 // Global error tracking

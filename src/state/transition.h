@@ -41,15 +41,9 @@ bool transition_execute_error_handler(SystemState state, void *error_context);
 void transition_log(SystemState from, SystemState to, StateCondition condition);
 void transition_log_error(SystemState state, StateCondition condition, const char *error_msg);
 
-// Recovery functions
-typedef enum {
-    RECOVERY_NONE,           // No recovery possible/needed
-    RECOVERY_RETRY,          // Simple retry of operation
-    RECOVERY_RESET_STATE,    // Reset state machine
-    RECOVERY_REINIT,        // Reinitialize subsystem
-    RECOVERY_REBOOT         // Full system reboot
-} RecoveryStrategy;
+#include "../common/definitions.h"
 
+// Recovery functions
 RecoveryStrategy transition_get_recovery_strategy(SystemState current_state);
 bool transition_execute_recovery(RecoveryStrategy strategy);
 uint32_t transition_calculate_backoff_delay(uint32_t retry_count);

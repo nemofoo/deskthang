@@ -45,22 +45,22 @@ typedef struct {
 
 // Error types
 typedef enum {
-    ERROR_NONE,
-    ERROR_INVALID_VERSION,
-    ERROR_INVALID_SEQUENCE,
-    ERROR_INVALID_LENGTH,
-    ERROR_INVALID_CHECKSUM,
-    ERROR_INVALID_COMMAND,
-    ERROR_BUFFER_OVERFLOW,
-    ERROR_TIMEOUT,
-    ERROR_STATE_MISMATCH,
-    ERROR_HARDWARE_FAILURE
-} ErrorType;
+    PROTOCOL_ERROR_NONE,
+    PROTOCOL_ERROR_INVALID_VERSION,
+    PROTOCOL_ERROR_INVALID_SEQUENCE,
+    PROTOCOL_ERROR_INVALID_LENGTH,
+    PROTOCOL_ERROR_INVALID_CHECKSUM,
+    PROTOCOL_ERROR_INVALID_COMMAND,
+    PROTOCOL_ERROR_BUFFER_OVERFLOW,
+    PROTOCOL_ERROR_TIMEOUT,
+    PROTOCOL_ERROR_STATE_MISMATCH,
+    PROTOCOL_ERROR_HARDWARE_FAILURE
+} ProtocolErrorType;
 
 // Error context
 typedef struct {
     // Error details
-    ErrorType type;              // Error classification
+    ProtocolErrorType type;      // Error classification
     SystemState source_state;    // State where error occurred
     uint32_t timestamp;         // Error timestamp
     
@@ -80,7 +80,7 @@ void protocol_reset(void);
 ProtocolConfig *protocol_get_config(void);
 
 // Error handling
-void protocol_set_error(ErrorType type, const char *message);
+void protocol_set_error(ProtocolErrorType type, const char *message);
 ErrorContext *protocol_get_error(void);
 bool protocol_clear_error(void);
 
