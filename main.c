@@ -13,20 +13,14 @@
 // Display configuration
 #define IMAGE_SIZE (240 * 240 * 2)  // 240x240 pixels, 2 bytes per pixel (RGB565)
 
-// Protocol version and configuration
+// Protocol configuration
 #define PROTOCOL_VERSION 1
 #define SERIAL_TIMEOUT_US 2000000    // 2 seconds base timeout
 #define SERIAL_DELAY_MS 20           // Delay between operations
 #define CHUNK_SIZE 256               // Smaller chunks for reliability
 #define BUFFER_SIZE 512              // General purpose buffer size
 
-// Legacy protocol characters (for backward compatibility)
-#define ACK_CHAR    'A'             // Acknowledgment character
-#define IMAGE_CMD   'I'             // Image command
-#define HELP_CMD    'H'             // Help command
-#define END_MARKER  'E'             // End marker
-
-// New packet types
+// Packet types
 #define PKT_SYNC    0x1B            // Start sync sequence
 #define PKT_SYNCACK 0x1C            // Sync acknowledgment
 #define PKT_CMD     0x1D            // Command packet
@@ -34,10 +28,10 @@
 #define PKT_ACK     0x1F            // Acknowledgment
 #define PKT_NACK    0x20            // Negative acknowledgment
 
-// New command types (for packet-based protocol)
-#define CMD_IMAGE   IMAGE_CMD       // Image command (same as legacy)
-#define CMD_HELP    HELP_CMD        // Help command (same as legacy)
-#define CMD_END     END_MARKER      // End marker (same as legacy)
+// Command types
+#define CMD_IMAGE   'I'             // Image command
+#define CMD_HELP    'H'             // Help command
+#define CMD_END     'E'             // End marker
 
 // Packet header structure (8 bytes)
 struct packet_header {
@@ -253,23 +247,6 @@ void display_init(void) {
     GC9A01_init();
 }
 
-// Try to detect protocol version from initial command
-bool detect_protocol_version(void) {
-    struct packet_header header;
-    uint8_t payload[8];
-    
-    // Try reading as new protocol packet
-    if (read_packet(&header, payload, sizeof(payload))) {
-        if (header.type == PKT_SYNC && header.length > 0) {
-            // Got valid sync packet, acknowledge with same version
-            write_packet(PKT_SYNCACK, header.sequence, payload, header.length);
-            return true;
-        }
-    }
-    
-    return false; // Fall back to legacy protocol
-}
-
 void display_raw_image(void) {
     printf("Ready for image\n");
     fflush(stdout);
@@ -444,11 +421,11 @@ void test_pattern_gradient(void) {
 void print_help(void) {
     printf("\nAvailable Commands:\n");
     printf("------------------\n");
-    printf("%c : Upload and display image (240x240 RGB565)\n", IMAGE_CMD);
+    printf("%c : Upload and display image (240x240 RGB565)\n", CMD_IMAGE);
     printf("1 : Show checkerboard pattern (black/white)\n");
     printf("2 : Show stripe pattern (red/blue)\n");
     printf("3 : Show gradient pattern (red)\n");
-    printf("%c : Show this help message\n", HELP_CMD);
+    printf("%c : Show this help message\n", CMD_HELP);
     printf("\nAll commands will send ACK on receipt\n");
     fflush(stdout);
 }
@@ -457,7 +434,7 @@ void set_display_pattern(char pattern) {
     fflush(stdout);
     
     switch(pattern) {
-        case IMAGE_CMD: // Image
+        case CMD_IMAGE: // Image
             display_raw_image();
             break;
         case '1':
@@ -469,7 +446,7 @@ void set_display_pattern(char pattern) {
         case '3':
             test_pattern_gradient();
             break;
-        case HELP_CMD:
+        case CMD_HELP:
             print_help();
             break;
         default:
@@ -498,54 +475,22 @@ int main() {
     
     struct packet_header header;
     uint8_t buffer[BUFFER_SIZE];
-    bool using_packet_protocol = false;
 
     while(1) {
-        // Try reading as packet protocol first
-        if (!using_packet_protocol) {
-            using_packet_protocol = detect_protocol_version();
-        }
-
-        if (using_packet_protocol) {
-            // Packet protocol mode
-            if (read_packet(&header, buffer, sizeof(buffer))) {
-                switch (header.type) {
-                    case PKT_SYNC:
-                        // Got a sync packet in the middle? Acknowledge again if needed
-                        write_packet(PKT_SYNCACK, header.sequence, buffer, header.length);
-                        break;
-                    case PKT_CMD:
-                        handle_packet_command(header.sequence, buffer, header.length);
-                        break;
-                    case PKT_DATA:
-                        // If you send data packets for images or something else
-                        // (Similar to display_raw_image's logic)
-                        send_nack(header.sequence, "Data packets only valid during image transfer");
-                        break;
-                    default:
-                        send_nack(header.sequence, "Invalid packet type");
-                        break;
-                }
-            }
-        } else {
-            // Legacy single-byte protocol
-            int c = getchar_timeout_us(100000);
-            if (c != PICO_ERROR_TIMEOUT && c >= 32 && c <= 126) {
-                // Immediately acknowledge receipt
-                putchar(ACK_CHAR);
-                fflush(stdout);
-                
-                // Then handle the command
-                if (c == HELP_CMD) {
-                    print_help();
-                } else {
-                    set_display_pattern((char)c);
-                }
-                
-                // Clear any pending input
-                while (getchar_timeout_us(1000) != PICO_ERROR_TIMEOUT) {
-                    // Discard extra bytes
-                }
+        if (read_packet(&header, buffer, sizeof(buffer))) {
+            switch (header.type) {
+                case PKT_SYNC:
+                    write_packet(PKT_SYNCACK, header.sequence, buffer, header.length);
+                    break;
+                case PKT_CMD:
+                    handle_packet_command(header.sequence, buffer, header.length);
+                    break;
+                case PKT_DATA:
+                    send_nack(header.sequence, "Data packets only valid during image transfer");
+                    break;
+                default:
+                    send_nack(header.sequence, "Invalid packet type");
+                    break;
             }
         }
     }

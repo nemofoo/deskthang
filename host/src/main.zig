@@ -117,11 +117,16 @@ fn getRetryDelay(attempt: u8) u64 {
     return @min(delay, Protocol.MAX_RETRY_DELAY_MS);
 }
 
-fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !bool {
+fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !Protocol.VersionResult {
     const stdout = std.io.getStdOut().writer();
     var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
+    var current_state = Protocol.State.idle;
 
     try stdout.print("\nInitiating protocol sync...\n", .{});
+
+    // Enter version detection state
+    current_state = Protocol.State.version_detect;
+    try stdout.print("Detecting protocol version...\n", .{});
 
     // Clear any pending data
     while (true) {
@@ -133,11 +138,14 @@ fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !bool {
         try logger.logReceived(buffer[0..bytes]);
     }
 
-    // Send sync packet with version info
+    // Attempt modern protocol first
+    current_state = Protocol.State.syncing;
     const sync_payload = [_]u8{Protocol.VERSION};
     const sync_header = PacketHeader.init(Protocol.PacketType.sync, 0, @intCast(sync_payload.len), Protocol.calculateCrc32(&sync_payload));
 
     var retry: u8 = 0;
+    var detected_version: u8 = Protocol.MIN_SUPPORTED_VERSION;
+
     while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
         if (retry > 0) {
             const delay = getRetryDelay(retry);
@@ -155,17 +163,33 @@ fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !bool {
         };
 
         if (response.header.type == Protocol.PacketType.sync_ack) {
-            if (response.payload.len > 0 and response.payload[0] == Protocol.VERSION) {
-                try stdout.print("\nSync established (Protocol v{})\n", .{Protocol.VERSION});
-                return true;
+            if (response.payload.len > 0) {
+                detected_version = response.payload[0];
+                // Attempt version negotiation
+                const negotiation = Protocol.negotiateVersion(detected_version) catch |err| {
+                    try stdout.print("\nVersion negotiation failed: {}\n", .{err});
+                    if (retry == Protocol.MAX_RETRIES - 1) {
+                        current_state = Protocol.State.error_state;
+                        return Protocol.Error.VersionNegotiationFailed;
+                    }
+                    continue;
+                };
+
+                if (negotiation.is_legacy) {
+                    current_state = Protocol.State.legacy_mode;
+                    try stdout.print("\nFalling back to legacy protocol\n", .{});
+                } else {
+                    current_state = Protocol.State.ready;
+                    try stdout.print("\nSync established (Protocol v{})\n", .{negotiation.version});
+                }
+                return negotiation;
             }
-            try stdout.print("\nWarning: Protocol version mismatch (got v{}, expected v{})\n", .{ response.payload[0], Protocol.VERSION });
-            return false;
         }
     }
 
+    current_state = Protocol.State.error_state;
     try stdout.print("\nSync failed after {} attempts\n", .{Protocol.MAX_RETRIES});
-    return false;
+    return Protocol.Error.VersionNegotiationFailed;
 }
 
 fn sendImageData(serial: std.fs.File, image_data: []const u8, logger: *SerialLogger) !void {
@@ -173,10 +197,10 @@ fn sendImageData(serial: std.fs.File, image_data: []const u8, logger: *SerialLog
     var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
 
     // Try protocol sync first
-    const new_protocol = try syncSerial(serial, logger);
+    const version_result = try syncSerial(serial, logger);
 
-    if (new_protocol) {
-        try stdout.print("Using protocol v{} for transfer\n", .{Protocol.VERSION});
+    if (!version_result.is_legacy) {
+        try stdout.print("Using protocol v{} for transfer\n", .{version_result.version});
 
         // Send image command
         const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{@intFromEnum(Protocol.Command.image)}));
@@ -528,13 +552,15 @@ pub fn main() !void {
                     },
                     '1'...'3' => {
                         var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
-                        const new_protocol = try syncSerial(s, &logger);
+                        const version_result = try syncSerial(s, &logger);
 
-                        if (new_protocol) {
+                        if (!version_result.is_legacy) {
+                            try stdout.print("Using protocol v{} for pattern command\n", .{version_result.version});
                             const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{choice[0]}));
                             try writePacket(s, cmd_header, &[_]u8{choice[0]}, &logger);
                             _ = try readPacket(s, &buffer, &logger);
                         } else {
+                            try stdout.print("Using legacy protocol for pattern command\n", .{});
                             try s.writeAll(&[_]u8{choice[0]});
                             try logger.logSent(&[_]u8{choice[0]});
 

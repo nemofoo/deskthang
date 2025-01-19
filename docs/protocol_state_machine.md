@@ -1,31 +1,33 @@
 # Protocol State Machine Documentation
 
 ## Overview
-This document defines the reference state machine for the display protocol (v1). It serves as the standard specification that both host (Zig) and device (C) implementations must conform to. The protocol supports both a modern packet-based mode and a legacy mode for backward compatibility.
+
+This document defines the reference state machine for the display protocol (v1). It describes a single-version, packet-based protocol, which both the host (Zig) and device (C) implementations must follow.
 
 ## Conformance Requirements
 
 ### Host Implementation
+
 The host implementation MUST:
-1. Support both modern and legacy protocols
-2. Handle version negotiation gracefully
-3. Implement proper error recovery
-4. Manage timeouts and retries
-5. Support all defined commands
+
+- Send and respond to the SYNC handshake
+- Implement proper error recovery
+- Manage timeouts and retries
+- Support all defined commands
 
 ### Device Implementation
+
 The device implementation MUST:
-1. Initialize hardware properly
-2. Support protocol version detection
-3. Handle both protocols simultaneously
-4. Manage display state transitions
-5. Implement proper error handling
+
+- Initialize hardware properly
+- Handle the SYNC handshake and send SYNC_ACK
+- Manage display state transitions
+- Implement proper error handling
 
 ### Version Compatibility
-- Protocol version 1 is current
-- Legacy protocol must be supported
-- Version negotiation is mandatory
-- Fallback must be graceful
+
+- Protocol version 1 is the sole version
+- No fallback or legacy support required
 
 ## State Machine Diagram
 
@@ -57,164 +59,117 @@ stateDiagram-v2
     ERROR --> SYNCING: retry_connection
     
     note right of SYNCING
-        Modern Protocol:
+        Protocol v1:
         - Full packet headers
         - Checksums
         - Sequence tracking
-        
-        Legacy Protocol:
-        - Simple command-ACK
-        - Basic error handling
+        - No legacy fallback
     end note
     
     note right of RECEIVING_DATA
         Image Transfer:
-        1. Send command
-        2. Size transfer (legacy)
-        3. Chunked data transfer
-        4. End marker
+        1. Send 'I' command
+        2. Chunked data transfer
+        3. End marker ('E')
     end note
 ```
-
-### Protocol Versions
-- **Modern Protocol (v1)**
-  - Full packet structure with headers and checksums
-  - Robust error handling and recovery
-  - Sequence tracking
-  - Support for all commands
-
-- **Legacy Protocol**
-  - Simple command-ACK structure
-  - Basic error detection
-  - Limited retry capability
-  - Primarily for image transfer compatibility
 
 ## Hardware States
 
 ### 1. HARDWARE_INIT
+
 Initial hardware setup state.
-- Entry Actions:
-  - Initialize SPI interface
-  - Configure GPIO pins
-  - Reset display controller
-- Transitions:
-  - → DISPLAY_INIT (on successful hardware init)
-  - → ERROR (on hardware failure)
+
+#### Entry Actions
+- Initialize SPI interface
+- Configure GPIO pins
+- Reset display controller
+
+#### Transitions
+- → DISPLAY_INIT (on successful hardware init)
+- → ERROR (on hardware failure)
 
 ### 2. DISPLAY_INIT
+
 Display controller initialization state.
-- Entry Actions:
-  - Send display initialization sequence
-  - Configure display parameters
-  - Set default display mode
-- Transitions:
-  - → IDLE (on successful init)
-  - → ERROR (on initialization failure)
+
+#### Entry Actions
+- Send display initialization sequence
+- Configure display parameters
+- Set default display mode
+
+#### Transitions
+- → IDLE (on successful init)
+- → ERROR (on initialization failure)
 
 ## Protocol States
 
 ### 1. IDLE
-Initial state of the protocol.
-- Transitions:
-  - → SYNCING (when initiating communication)
-  - → ERROR (on invalid packet received)
 
-### 2. VERSION_DETECT
-Protocol version detection state.
-- Entry Actions:
-  - Clear input buffers
-  - Wait for initial command
-- Transitions:
-  - → SYNCING (on modern protocol detection)
-  - → LEGACY_MODE (on legacy command detection)
-  - → ERROR (on invalid data)
+Default protocol state before communication starts.
 
-### 3. SYNCING
+#### Transitions
+- → SYNCING (when initiating communication)
+- → ERROR (on invalid packet received)
+
+### 2. SYNCING
+
 Attempting to establish synchronization.
-- Entry Action: Send SYNC packet
-- Transitions:
-  - → READY (on receiving SYNC_ACK)
-  - → ERROR (on timeout after MAX_RETRIES)
-  - → ERROR (on invalid checksum)
-  - → SYNCING (on retry needed)
 
-### 3. LEGACY_MODE
-Legacy protocol handling state.
-- Entry Actions:
-  - Disable packet processing
-  - Enable single-byte command mode
-- Transitions:
-  - → COMMAND_PROCESSING (on command byte)
-  - → ERROR (on invalid byte)
-  - → VERSION_DETECT (on protocol switch attempt)
+#### Entry Action
+- Send SYNC packet
 
-### 4. READY
-Connection established and ready for commands.
-- Transitions:
-  - → SENDING_COMMAND (when sending command)
-  - → RECEIVING_DATA (when expecting data)
-  - → ERROR (on invalid packet)
-  - → IDLE (on END command)
+#### Transitions
+- → READY (on receiving SYNC_ACK)
+- → ERROR (on timeout or invalid checksum)
+- → SYNCING (on retry needed)
 
-### 4. COMMAND_PROCESSING
-Command validation and execution state.
-- Entry Actions:
-  - Validate command
-  - Prepare display if needed
-- Transitions:
-  - → SENDING_COMMAND (modern protocol)
-  - → DISPLAY_UPDATE (legacy protocol)
-  - → ERROR (on invalid command)
+### 3. READY
 
-### 5. SENDING_COMMAND
+Connection established; ready to send/receive commands or data.
+
+#### Transitions
+- → SENDING_COMMAND (when sending a command)
+- → RECEIVING_DATA (when expecting data)
+- → ERROR (on invalid packet)
+- → IDLE (on END command)
+
+### 4. SENDING_COMMAND
+
 Transmitting a command to the device.
-- Entry Action: Send CMD packet
-- Transitions:
-  - → READY (on ACK received)
-  - → ERROR (on NACK received)
-  - → ERROR (on timeout)
-  - → SENDING_COMMAND (on retry needed)
 
-### 5. DISPLAY_UPDATE
-Display content update state.
-- Entry Actions:
-  - Set display frame
-  - Configure memory access
-  - Prepare for data
-- Transitions:
-  - → RECEIVING_DATA (for image data)
-  - → PATTERN_DRAW (for test patterns)
-  - → ERROR (on display error)
+#### Entry Action
+- Send CMD packet
 
-### 6. PATTERN_DRAW
-Test pattern generation state.
-- Entry Actions:
-  - Calculate pattern data
-  - Configure display access
-- Transitions:
-  - → READY (on completion)
-  - → ERROR (on drawing failure)
+#### Transitions
+- → READY (on ACK received)
+- → ERROR (on NACK or timeout)
+- → SENDING_COMMAND (on retry needed)
 
-### 7. RECEIVING_DATA
-Receiving data chunks from device.
-- Transitions:
-  - → READY (on complete data received)
-  - → ERROR (on invalid checksum)
-  - → ERROR (on invalid sequence)
-  - → RECEIVING_DATA (when expecting more chunks)
+### 5. RECEIVING_DATA
 
-### 8. ERROR
+Receiving data chunks from the device (or the host if on device side).
+
+#### Transitions
+- → READY (on complete data received)
+- → ERROR (on invalid checksum or sequence)
+- → RECEIVING_DATA (when expecting more chunks)
+
+### 6. ERROR
+
 Error state with recovery options.
-- Error Types:
-  - InvalidSync: Synchronization failure
-  - InvalidChecksum: Data corruption detected
-  - InvalidSequence: Packet sequence mismatch
-  - Timeout: Operation timed out
-  - NackReceived: Command rejected
-  - InvalidPacketType: Unknown packet type received
-- Transitions:
-  - → IDLE (on reset)
-  - → SYNCING (on retry connection)
+
+#### Common Errors
+- InvalidSync: Synchronization failure
+- InvalidChecksum: Data corruption detected
+- InvalidSequence: Packet sequence mismatch
+- Timeout: Operation timed out
+- NackReceived: Command rejected
+- InvalidPacketType: Unknown packet type
+
+#### Transitions
+- → IDLE (on reset)
+- → SYNCING (on retry connection)
 
 ## Implementation Validation
 
@@ -222,78 +177,66 @@ Error state with recovery options.
 
 | State | Host Requirements | Device Requirements | Validation Criteria |
 |-------|------------------|---------------------|-------------------|
-| HARDWARE_INIT | N/A | Must initialize SPI and GPIO | - Correct pin configuration<br>- SPI timing verification<br>- Reset sequence timing |
-| DISPLAY_INIT | N/A | Must configure display correctly | - Initialization sequence<br>- Display parameters<br>- Default mode setting |
-| VERSION_DETECT | Must attempt modern protocol | Must support detection | - Protocol version check<br>- Fallback handling<br>- Buffer clearing |
-| SYNCING | Must implement retry logic | Must respond to sync | - Timeout handling<br>- Retry counting<br>- Version verification |
-| LEGACY_MODE | Must support fallback | Must handle legacy commands | - Command validation<br>- Simple ACK handling<br>- Error recovery |
-| READY | Must track connection state | Must maintain ready state | - Command acceptance<br>- State consistency<br>- Error detection |
-| COMMAND_PROCESSING | Must validate commands | Must process all commands | - Command validation<br>- Display preparation<br>- Error handling |
-| SENDING_COMMAND | Must handle ACK/NACK | Must verify commands | - Sequence tracking<br>- Retry handling<br>- Timeout management |
-| DISPLAY_UPDATE | Must wait for completion | Must update display | - Frame configuration<br>- Memory access<br>- Error detection |
-| PATTERN_DRAW | Must wait for completion | Must draw patterns | - Pattern accuracy<br>- Drawing performance<br>- Error handling |
-| RECEIVING_DATA | Must chunk data properly | Must handle all chunks | - Sequence tracking<br>- Checksum validation<br>- Buffer management |
-| ERROR | Must implement recovery | Must support recovery | - Error classification<br>- Recovery paths<br>- State restoration |
+| HARDWARE_INIT | N/A | Must initialize SPI and GPIO | - Correct pin config<br>- SPI timing<br>- Reset sequence timing |
+| DISPLAY_INIT | N/A | Must configure display correctly | - Init sequence<br>- Display params<br>- Default mode |
+| SYNCING | Must implement retry logic | Must respond to SYNC | - Timeout<br>- Retry counts<br>- Version check |
+| READY | Track active connection | Maintain ready state | - Command acceptance<br>- State consistency<br>- Error detection |
+| SENDING_COMMAND | Handle ACK/NACK & timeouts | Verify commands & return correct ACK/NACK | - Sequence tracking<br>- Retry handling<br>- Timeout management |
+| RECEIVING_DATA | Accept chunked data & validate checksums | Provide chunked data | - Checksum validation<br>- Sequence check<br>- Buffer mgmt |
+| ERROR | Implement and track error recovery paths | Must support reset/retry | - Error classification<br>- Logging<br>- Automatic resets |
 
 ### Implementation Gaps Analysis
 
 #### Host (Zig) Implementation
-1. Version Detection
-   - [ ] Implement protocol version detection
-   - [ ] Add version compatibility check
-   - [ ] Support graceful fallback
 
-2. Error Handling
-   - [ ] Add exponential backoff
-   - [ ] Implement all recovery paths
-   - [ ] Add detailed error logging
+##### Sync & Error Handling
+- Send/receive SYNC, SYNC_ACK
+- Implement timeouts and retries
+- Handle various error states
 
-3. Buffer Management
-   - [ ] Add buffer overflow protection
-   - [ ] Implement proper chunking
-   - [ ] Add sequence validation
+##### Command Sending
+- Use proper CMD packets
+- Validate ACK/NACK
+
+##### Data Transfer
+- Chunk data into 256-byte payloads
+- Check ACK after each chunk
+- Handle retransmissions
 
 #### Device (C) Implementation
-1. Protocol Support
-   - [ ] Add version negotiation
-   - [ ] Implement both protocols
-   - [ ] Add protocol switching
 
-2. Display Management
-   - [ ] Add display state tracking
-   - [ ] Implement all test patterns
-   - [ ] Add error recovery
+##### Sync & Ack
+- Respond to SYNC with SYNC_ACK
+- Validate checksums, sequence
 
-3. Memory Management
-   - [ ] Add buffer protection
-   - [ ] Implement safe transfers
-   - [ ] Add overflow checking
+##### Display Management
+- Handle I (image) and pattern commands (1, 2, 3)
+- Update display states accordingly
+
+##### Data Handling
+- Accept chunked image data
+- Send ACK or NACK per chunk
+- Reset state machine on errors
 
 ### Conformance Testing
 
-1. Protocol Negotiation Test
-   ```
-   1. Start connection
-   2. Verify version detection
-   3. Test fallback scenario
-   4. Verify protocol switch
-   ```
+#### Protocol Sync Test
+- Host sends SYNC
+- Device responds SYNC_ACK
+- Validate timeouts/retries
 
-2. Error Recovery Test
-   ```
-   1. Inject checksum errors
-   2. Force timeouts
-   3. Test sequence errors
-   4. Verify recovery paths
-   ```
+#### Command/ACK Test
+- Host sends various commands (1, 2, 3, I)
+- Verify device acknowledges or rejects properly
 
-3. Display Function Test
-   ```
-   1. Test all patterns
-   2. Verify image transfer
-   3. Check error handling
-   4. Validate state transitions
-   ```
+#### Image Transfer Test
+- Send I command
+- Transfer data in chunks
+- Verify display updates and final ACK
+
+#### Error Injection Test
+- Inject bad checksums or sequences
+- Check that device/host retries and recovers
 
 ## Protocol Parameters
 
@@ -309,7 +252,8 @@ Error state with recovery options.
 - Chunk Size: 256 bytes
 
 ### Header Format
-```
+
+```c
 PacketHeader {
     type: PacketType,      // 1 byte
     sequence: u8,          // 1 byte
@@ -327,90 +271,67 @@ PacketHeader {
 - 0x20: NACK
 
 ### Commands
-- '1': Checkerboard pattern
-- '2': Stripes pattern
-- '3': Gradient pattern
-- 'I': Image transfer (240x240 RGB565)
-- 'H': Help menu
-- 'E': End session
+- 1: Checkerboard pattern
+- 2: Stripes pattern
+- 3: Gradient pattern
+- I: Image transfer (240×240 RGB565)
+- H: Help menu
+- E: End session
 
-### Image Transfer States
-1. **Image Command**
-   - Send 'I' command
-   - Wait for ACK
-   - Modern: Full packet with checksum
-   - Legacy: Single byte with ACK
+## Image Transfer States
 
-2. **Size Transfer** (Legacy only)
-   - Send 4-byte size (big endian)
-   - Wait for ACK
-   - Verify size matches 240x240 RGB565
+### Image Command
+- Send I command
+- Wait for ACK
+- Full packet with checksum
 
-3. **Data Transfer**
-   - Split data into 256-byte chunks
-   - For each chunk:
-     - Send chunk data
-     - Wait for ACK
-     - Retry on failure (up to 8 times)
-     - Track sequence numbers (modern only)
+### Data Transfer
+- Split data into 256-byte chunks
+- Send each chunk, wait for ACK
+- Retry on failure (up to 8 times)
+- Use sequence numbers
 
-4. **End Marker**
-   - Send 'E' command
-   - Wait for final ACK
-   - Modern: Full packet with checksum
-   - Legacy: Single byte with ACK
+### End Marker
+- Send E command
+- Wait for final ACK
 
 ## Error Recovery Strategies
 
-1. **Sync Loss Recovery**
-   - Reset to IDLE state
-   - Clear any pending data in buffers
-   - Initiate new sync sequence with version check
-   - Implement exponential backoff between retries (50ms base, doubles each retry)
-   - Fall back to legacy protocol if version mismatch
+### Sync Loss Recovery
+- Return to IDLE
+- Clear pending data
+- Initiate new SYNC
+- Use exponential backoff on retries
 
-2. **Checksum Error Recovery**
-   - Request retransmission of last packet
-   - Track failed attempts (up to 8 retries)
-   - Use exponential backoff between retries
-   - Reset connection if persistent
-   - Log checksum values for debugging
+### Checksum Error Recovery
+- Request retransmission (NACK)
+- Track failed attempts (up to 8)
+- Log checksum values
 
-3. **Sequence Error Recovery**
-   - Request missing packets
-   - Reset sequence if unrecoverable
-   - Log sequence discontinuity
+### Sequence Error Recovery
+- Request missing packets (NACK)
+- Reset sequence if unrecoverable
+- Log discontinuities
 
-4. **Timeout Recovery**
-   - Base timeout: 1000ms
-   - Implement exponential backoff (50ms to 1000ms)
-   - Reset connection after 8 retries
-   - Log timing statistics and retry patterns
-   - Consider network conditions for retry timing
+### Timeout Recovery
+- Use exponential backoff (50ms to 1000ms)
+- Abort after 8 retries
+- Log timing stats
 
 ## Debugging Considerations
 
-1. **State Tracking**
-   - Log all state transitions with timestamps
-   - Include duration in each state
-   - Track retry counts per operation
-   - Log protocol version negotiations
-   - Monitor legacy protocol fallbacks
+### State Tracking
+- Log state transitions with timestamps
+- Track retry counts per operation
 
-2. **Error Monitoring**
-   - Log detailed error context with timestamps
-   - Track error frequency patterns
-   - Monitor recovery success rates
-   - Log protocol-specific error details
-   - Track legacy vs modern protocol errors
-   - Monitor version negotiation failures
+### Error Monitoring
+- Log errors with context and timestamps
+- Monitor recovery success rates
 
-3. **Performance Metrics**
-   - Measure round-trip times
-   - Track retry frequencies
-   - Monitor checksum failure rates
+### Performance Metrics
+- Measure round-trip times
+- Track retry frequencies and checksum failures
 
-4. **Data Integrity**
-   - Validate all packet fields
-   - Track CRC32 calculation performance
-   - Monitor packet size distributions
+### Data Integrity
+- Validate all packet fields
+- Monitor packet sizes and CRC32 performance

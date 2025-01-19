@@ -4,13 +4,15 @@ A desk display project using Raspberry Pi Pico (RP2040) with a GC9A01 LCD screen
 
 ## Setup
 
-1. Clone the repository with submodules:
+Clone the repository with submodules:
+
 ```bash
 git clone [repository-url]
 git submodule update --init --recursive
 ```
 
-2. Build the Pico firmware:
+Build the Pico firmware:
+
 ```bash
 cd pico
 mkdir build
@@ -19,17 +21,19 @@ cmake ..
 make
 ```
 
-3. Build the Zig host application:
+Build the Zig host application:
+
 ```bash
 cd host
 zig build
 ```
 
-## communication protocol (v1)
+## Communication Protocol (v1)
 
-The host and Pico communicate over USB serial using a robust packet-based protocol:
+All host-device communication occurs over USB serial using a packet-based protocol:
 
 ### Packet Structure
+
 - Header (8 bytes):
   - Packet Type (1 byte)
   - Sequence Number (1 byte)
@@ -38,14 +42,17 @@ The host and Pico communicate over USB serial using a robust packet-based protoc
 - Payload (variable length, max 512 bytes)
 
 ### Packet Types
-- `SYNC (0x1B)`: Synchronization request
-- `SYNC_ACK (0x1C)`: Synchronization acknowledgment
-- `CMD (0x1D)`: Command packet
-- `DATA (0x1E)`: Data packet
-- `ACK (0x1F)`: Acknowledgment
-- `NACK (0x20)`: Negative acknowledgment
+
+- SYNC (0x1B): Synchronization request
+- SYNC_ACK (0x1C): Synchronization acknowledgment
+- CMD (0x1D): Command packet
+- DATA (0x1E): Data packet
+- ACK (0x1F): Acknowledgment
+- NACK (0x20): Negative acknowledgment
 
 ### Protocol Features
+
+- Version: 1 (the only supported protocol version)
 - CRC32 error detection
 - Sequence numbering for packet ordering
 - Automatic retransmission on errors
@@ -56,15 +63,18 @@ The host and Pico communicate over USB serial using a robust packet-based protoc
 - Data chunks of 256 bytes
 
 ### Commands
-- `I`: Start image transfer (RGB565 format, 240x240)
-- `E`: End image transfer
-- `1`: Show checkerboard pattern
-- `2`: Show stripe pattern
-- `3`: Show gradient pattern
-- `H`: Display help/command list
+
+- I: Start image transfer (RGB565 format, 240×240)
+- E: End image transfer
+- 1: Show checkerboard pattern
+- 2: Show stripe pattern
+- 3: Show gradient pattern
+- H: Display help/command list
 
 ### Error Handling
-The protocol handles various error conditions:
+
+The protocol handles:
+
 - Invalid synchronization
 - Checksum mismatches
 - Sequence errors
@@ -73,7 +83,8 @@ The protocol handles various error conditions:
 - Invalid packet types
 
 ## Hardware Setup
-- Screen: GC9A01 240x240 Round LCD
+
+- Screen: GC9A01 240×240 Round LCD
 - Microcontroller: Raspberry Pi Pico (RP2040)
 - Connections:
   - MOSI: GPIO 19
@@ -83,26 +94,23 @@ The protocol handles various error conditions:
   - RST: GPIO 20
 
 ## Dependencies
+
 - Pico SDK (submodule)
 - Zig 0.11.0 or later
 - CMake 3.13 or later
 - libpng for the host application
 
-### Serial Communication Setup
+## Serial Communication Setup
+
 - Baud rate: 115200
 - Flow control: None
-- Debug output: Separate channel
-  - Host <-> Device protocol data on USB CDC first interface
-  - Device debug output on USB CDC second interface
-  - OR if single interface:
-    - Device prefixes all debug with "DBG:" 
-    - Host filters out lines starting with "DBG:" before protocol parsing
-    - Protocol data never starts with "DBG:"
+- Debug output: Separate channel, or use a prefix like "DBG:" on the same channel that the host filters out from protocol data.
 
-### Protocol Framing
-1. Initial packet must start with SYNC (0x1B) marker
-2. All subsequent packet headers must align on 8-byte boundaries
-3. Device must not send any non-protocol data on protocol channel
-4. If debug output is needed during protocol operation:
-   - Must use separate channel, OR
-   - Must buffer until protocol operation completes
+## Protocol Framing
+
+- The first packet from the host begins with SYNC (0x1B).
+- All subsequent packet headers align on 8-byte boundaries.
+- The device must not send non-protocol data on the protocol channel.
+- If debug output is needed during protocol operation and there is only a single interface:
+  - Prefix logs with "DBG:" so the host ignores them for protocol parsing.
+  - Never mix debug and protocol bytes in the same packet.

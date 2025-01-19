@@ -1,6 +1,9 @@
 pub const Protocol = struct {
     // Protocol version
-    pub const VERSION: u8 = 1;
+    pub const VERSION: u8 = 1; // Only supported version
+
+    // Protocol states
+    pub const State = enum(u8) { idle, syncing, ready, sending_command, receiving_data, error_state };
 
     // Packet types
     pub const PacketType = enum(u8) {
