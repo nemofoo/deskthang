@@ -28,10 +28,11 @@ void transition_log_error(SystemState state, StateCondition condition, const cha
 
 // Recovery functions
 typedef enum {
-    RECOVERY_RESET,
-    RECOVERY_RETRY,
-    RECOVERY_FALLBACK,
-    RECOVERY_FAIL
+    RECOVERY_NONE,           // No recovery possible/needed
+    RECOVERY_RETRY,          // Simple retry of operation
+    RECOVERY_RESET_STATE,    // Reset state machine
+    RECOVERY_REINIT,        // Reinitialize subsystem
+    RECOVERY_REBOOT         // Full system reboot
 } RecoveryStrategy;
 
 RecoveryStrategy transition_get_recovery_strategy(SystemState current_state);

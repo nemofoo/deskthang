@@ -1,15 +1,22 @@
 # Protocol Documentation Cleanup - Verified Conflicts
 
 ## State Machine Recovery ✓
-- [ ] Document whether FALLBACK and FAIL are valid recovery strategies
-  - Verified conflict: `transition.h` defines RECOVERY_FALLBACK/FAIL but `protocol_state_machine.md` only shows Reset/IDLE and Retry/SYNCING paths
-- [ ] Update state diagrams to show all recovery paths consistently
+- [x] Document whether FALLBACK and FAIL are valid recovery strategies
+  - Resolution: FALLBACK and FAIL were outdated. Replaced with comprehensive set of strategies:
+    - NONE: No recovery possible/needed
+    - RETRY: Simple retry with backoff
+    - RESET_STATE: Reset to known good state
+    - REINIT: Reinitialize subsystem
+    - REBOOT: Full system reboot (if enabled)
+- [x] Update state diagrams to show all recovery paths consistently
   - Verified: `protocol_architecture.md` and `protocol_state_machine.md` show same basic paths, I was incorrect about diagram differences
 
 ## Buffer & Timing Parameters ✓ 
-- [ ] Create a single source of truth for all protocol constants
-  - Verified: Constants defined in both `protocol.h` and docs
-- [ ] Buffer sizes are actually consistent:
+- [x] Create a single source of truth for all protocol constants
+  - Resolution: Created protocol_constants.md as single reference
+  - All docs now link to this file instead of duplicating values
+  - Source of truth remains protocol.h
+- [x] Buffer sizes are actually consistent:
   - 512 byte max packet (`protocol.h` and `readme.md`)
   - 256 byte chunks (consistent in docs)
   - Retraction: This was not actually a conflict

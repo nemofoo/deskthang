@@ -47,12 +47,14 @@ The project uses a state machine-based protocol for reliable communication betwe
 
 ### Packet Structure
 
-- Header (8 bytes):
+See [Protocol Constants](docs/protocol_constants.md) for exact sizes.
+
+- Header:
   - Packet Type (1 byte)
   - Sequence Number (1 byte)
   - Length (2 bytes)
   - CRC32 Checksum (4 bytes)
-- Payload (variable length, max 512 bytes)
+- Payload (variable length)
 
 ### Packet Types
 
@@ -94,11 +96,7 @@ The protocol implements comprehensive error handling:
 - Automatic retries with exponential backoff
 - Error logging and recovery
 
-Key parameters:
-- Maximum 8 retries per operation
-- Base timeout: 1000ms
-- Retry delays: 50ms to 1000ms (with exponential backoff)
-- Data chunks: 256 bytes
+Key parameters are defined in [Protocol Constants](docs/protocol_constants.md).
 
 ## Module Organization
 

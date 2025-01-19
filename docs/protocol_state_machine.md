@@ -18,6 +18,45 @@ The protocol implements a deterministic state machine that manages all aspects o
 - Must implement error recovery
 - Must validate all packets
 
+## Recovery Strategies
+
+The protocol implements five distinct recovery strategies:
+
+1. RECOVERY_NONE
+   - Used when no recovery is possible or needed
+   - Typically for non-recoverable errors or when recovery would be unsafe
+
+2. RECOVERY_RETRY
+   - Simple retry of the failed operation
+   - Uses exponential backoff with jitter
+   - Limited by max_retries configuration
+   - Primary path: ERROR → SYNCING
+
+3. RECOVERY_RESET_STATE
+   - Resets the state machine to a known good state
+   - Maintains hardware configuration
+   - Used for state machine errors
+   - Primary path: ERROR → IDLE
+
+4. RECOVERY_REINIT
+   - Reinitializes the affected subsystem
+   - More aggressive than state reset
+   - Used for hardware errors
+   - Primary path: ERROR → HARDWARE_INIT or ERROR → DISPLAY_INIT
+
+5. RECOVERY_REBOOT
+   - Full system reboot
+   - Most aggressive recovery option
+   - Only used for fatal errors
+   - Must be explicitly enabled in configuration
+   - Primary path: ERROR → HARDWARE_INIT (after reboot)
+
+Strategy selection is based on:
+- Error severity (INFO, WARNING, ERROR, FATAL)
+- Error category (HARDWARE, STATE, etc.)
+- Error context (recoverable flag)
+- System configuration (allow_reboot)
+
 ## State Definitions
 
 ### 1. HARDWARE_INIT
@@ -156,6 +195,8 @@ Error handling and recovery state.
 #### Exit Conditions
 - Reset complete → IDLE
 - Retry possible → SYNCING
+- Reinit needed → HARDWARE_INIT/DISPLAY_INIT
+- Reboot needed → HARDWARE_INIT (after reboot)
 
 #### Validation
 - Error logged
@@ -185,6 +226,8 @@ Error handling and recovery state.
 | DATA_TRANSFER | transfer_failed | ERROR | Error logged |
 | ERROR | reset_complete | IDLE | Clean reset |
 | ERROR | retry_connection | SYNCING | Retry valid |
+| ERROR | reinit_needed | HARDWARE_INIT/DISPLAY_INIT | Error category |
+| ERROR | reboot_needed | HARDWARE_INIT | Fatal error |
 
 ## Implementation Guidelines
 
@@ -221,18 +264,32 @@ bool handle_error(ErrorContext *ctx) {
     log_error_context(ctx);
     
     // Determine recovery path
-    RecoveryPath path = determine_recovery_path(ctx);
+    RecoveryStrategy strategy = get_recovery_strategy(ctx);
     
     // Execute recovery
-    switch (path) {
-        case RECOVERY_RESET:
-            return transition_state(IDLE, CONDITION_RESET);
+    switch (strategy) {
+        case RECOVERY_NONE:
+            return false;
             
         case RECOVERY_RETRY:
             return transition_state(SYNCING, CONDITION_RETRY);
             
-        case RECOVERY_FAIL:
-            return false;
+        case RECOVERY_RESET_STATE:
+            return transition_state(IDLE, CONDITION_RESET);
+            
+        case RECOVERY_REINIT:
+            return transition_state(
+                ctx->error_category == ERROR_CAT_DISPLAY ? 
+                    STATE_DISPLAY_INIT : STATE_HARDWARE_INIT,
+                CONDITION_REINIT
+            );
+            
+        case RECOVERY_REBOOT:
+            if (!config.allow_reboot) {
+                return false;
+            }
+            system_reboot();
+            return true;  // Never reached
     }
 }
 ```

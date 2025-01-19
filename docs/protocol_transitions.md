@@ -228,18 +228,25 @@ bool error_handler_attempt_recovery(ErrorContext *ctx) {
     
     // Execute recovery actions
     switch (strategy) {
-        case RECOVERY_RESET:
-            return execute_reset_recovery(ctx);
+        case RECOVERY_NONE:
+            return false;
             
         case RECOVERY_RETRY:
             sleep_ms(delay);
             return execute_retry_recovery(ctx);
             
-        case RECOVERY_FALLBACK:
-            return execute_fallback_recovery(ctx);
+        case RECOVERY_RESET_STATE:
+            return execute_reset_recovery(ctx);
             
-        default:
-            return false;
+        case RECOVERY_REINIT:
+            return execute_reinit_recovery(ctx);
+            
+        case RECOVERY_REBOOT:
+            if (!config.allow_reboot) {
+                return false;
+            }
+            system_reboot();
+            return true;  // Never reached
     }
 }
 ```
