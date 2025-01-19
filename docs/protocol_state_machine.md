@@ -1,337 +1,286 @@
-# Protocol State Machine Documentation
+# Protocol State Machine Reference
 
 ## Overview
 
-This document defines the reference state machine for the display protocol (v1). It describes a single-version, packet-based protocol, which both the host (Zig) and device (C) implementations must follow.
+The protocol implements a deterministic state machine that manages all aspects of display communication. This document defines the reference implementation that both host and device must follow.
 
-## Conformance Requirements
+## Core Requirements
 
 ### Host Implementation
+- Must implement full state machine
+- Must handle all error conditions
+- Must support retry mechanisms
+- Must validate all transitions
 
-The host implementation MUST:
+### Device Implementation  
+- Must maintain consistent state
+- Must respond to all commands
+- Must implement error recovery
+- Must validate all packets
 
-- Send and respond to the SYNC handshake
-- Implement proper error recovery
-- Manage timeouts and retries
-- Support all defined commands
-
-### Device Implementation
-
-The device implementation MUST:
-
-- Initialize hardware properly
-- Handle the SYNC handshake and send SYNC_ACK
-- Manage display state transitions
-- Implement proper error handling
-
-### Version Compatibility
-
-- Protocol version 1 is the sole version
-- No fallback or legacy support required
-
-## State Machine Diagram
-
-```mermaid
-stateDiagram-v2
-    [*] --> IDLE
-    
-    IDLE --> SYNCING: initiate_connection
-    IDLE --> ERROR: invalid_packet
-    
-    SYNCING --> READY: sync_ack_received
-    SYNCING --> ERROR: timeout/invalid_checksum
-    SYNCING --> SYNCING: retry_needed
-    
-    READY --> SENDING_COMMAND: send_command
-    READY --> RECEIVING_DATA: expect_data
-    READY --> ERROR: invalid_packet
-    READY --> IDLE: end_command
-    
-    SENDING_COMMAND --> READY: ack_received
-    SENDING_COMMAND --> ERROR: nack/timeout
-    SENDING_COMMAND --> SENDING_COMMAND: retry_needed
-    
-    RECEIVING_DATA --> READY: data_complete
-    RECEIVING_DATA --> ERROR: invalid_checksum/sequence
-    RECEIVING_DATA --> RECEIVING_DATA: more_chunks
-    
-    ERROR --> IDLE: reset
-    ERROR --> SYNCING: retry_connection
-    
-    note right of SYNCING
-        Protocol v1:
-        - Full packet headers
-        - Checksums
-        - Sequence tracking
-        - No legacy fallback
-    end note
-    
-    note right of RECEIVING_DATA
-        Image Transfer:
-        1. Send 'I' command
-        2. Chunked data transfer
-        3. End marker ('E')
-    end note
-```
-
-## Hardware States
+## State Definitions
 
 ### 1. HARDWARE_INIT
-
-Initial hardware setup state.
+Initial state after power-on or reset.
 
 #### Entry Actions
-- Initialize SPI interface
-- Configure GPIO pins
-- Reset display controller
+- Configure SPI interface
+- Set up GPIO pins
+- Initialize timers
+- Configure interrupts
 
-#### Transitions
-- → DISPLAY_INIT (on successful hardware init)
-- → ERROR (on hardware failure)
+#### Exit Conditions
+- Success → DISPLAY_INIT
+- Failure → ERROR
+
+#### Validation
+- SPI configuration valid
+- GPIO pins configured
+- Timing requirements met
 
 ### 2. DISPLAY_INIT
-
 Display controller initialization state.
 
 #### Entry Actions
-- Send display initialization sequence
+- Send reset sequence
 - Configure display parameters
-- Set default display mode
+- Set up display mode
+- Initialize display buffer
 
-#### Transitions
-- → IDLE (on successful init)
-- → ERROR (on initialization failure)
+#### Exit Conditions
+- Success → IDLE
+- Failure → ERROR
 
-## Protocol States
+#### Validation
+- Reset sequence complete
+- Display parameters set
+- Display responds correctly
 
-### 1. IDLE
+### 3. IDLE
+Default protocol state, waiting for commands.
 
-Default protocol state before communication starts.
+#### Entry Actions
+- Clear transfer buffers
+- Reset sequence counter
+- Initialize packet parser
 
-#### Transitions
-- → SYNCING (when initiating communication)
-- → ERROR (on invalid packet received)
+#### Exit Conditions
+- SYNC received → SYNCING
+- Invalid packet → ERROR
 
-### 2. SYNCING
+#### Validation
+- Buffers empty
+- No active transfers
+- Parser ready
 
-Attempting to establish synchronization.
+### 4. SYNCING
+Establishing protocol synchronization.
 
-#### Entry Action
-- Send SYNC packet
+#### Entry Actions
+- Send/verify SYNC
+- Start sync timer
+- Initialize retry counter
 
-#### Transitions
-- → READY (on receiving SYNC_ACK)
-- → ERROR (on timeout or invalid checksum)
-- → SYNCING (on retry needed)
+#### Exit Conditions
+- SYNC_ACK valid → READY
+- Timeout/Invalid → ERROR
+- Retry needed → SYNCING
 
-### 3. READY
+#### Validation
+- Protocol version match
+- Timing within limits
+- Retry count valid
 
-Connection established; ready to send/receive commands or data.
+### 5. READY
+Connection established, ready for commands.
 
-#### Transitions
-- → SENDING_COMMAND (when sending a command)
-- → RECEIVING_DATA (when expecting data)
-- → ERROR (on invalid packet)
-- → IDLE (on END command)
+#### Entry Actions
+- Reset command parser
+- Initialize transfer state
+- Start command timer
 
-### 4. SENDING_COMMAND
+#### Exit Conditions
+- Valid command → COMMAND_PROCESSING
+- Image command → DATA_TRANSFER
+- Invalid command → ERROR
+- End command → IDLE
 
-Transmitting a command to the device.
+#### Validation
+- Parser initialized
+- Transfer state clear
+- Timer active
 
-#### Entry Action
-- Send CMD packet
+### 6. COMMAND_PROCESSING
+Processing a valid command.
 
-#### Transitions
-- → READY (on ACK received)
-- → ERROR (on NACK or timeout)
-- → SENDING_COMMAND (on retry needed)
+#### Entry Actions
+- Parse command parameters
+- Validate command type
+- Initialize command context
 
-### 5. RECEIVING_DATA
+#### Exit Conditions
+- Command complete → READY
+- Command failed → ERROR
 
-Receiving data chunks from the device (or the host if on device side).
+#### Validation
+- Command type valid
+- Parameters valid
+- Resources available
 
-#### Transitions
-- → READY (on complete data received)
-- → ERROR (on invalid checksum or sequence)
-- → RECEIVING_DATA (when expecting more chunks)
+### 7. DATA_TRANSFER
+Handling image data transfer.
 
-### 6. ERROR
+#### Entry Actions
+- Initialize transfer buffer
+- Reset chunk counter
+- Start transfer timer
 
-Error state with recovery options.
+#### Exit Conditions
+- Chunk valid → DATA_TRANSFER
+- Transfer complete → READY
+- Transfer failed → ERROR
 
-#### Common Errors
-- InvalidSync: Synchronization failure
-- InvalidChecksum: Data corruption detected
-- InvalidSequence: Packet sequence mismatch
-- Timeout: Operation timed out
-- NackReceived: Command rejected
-- InvalidPacketType: Unknown packet type
+#### Validation
+- Buffer space available
+- Sequence numbers valid
+- Checksums match
 
-#### Transitions
-- → IDLE (on reset)
-- → SYNCING (on retry connection)
+### 8. ERROR
+Error handling and recovery state.
 
-## Implementation Validation
+#### Entry Actions
+- Log error context
+- Initialize recovery
+- Stop active transfers
 
-### State Validation Matrix
+#### Exit Conditions
+- Reset complete → IDLE
+- Retry possible → SYNCING
 
-| State | Host Requirements | Device Requirements | Validation Criteria |
-|-------|------------------|---------------------|-------------------|
-| HARDWARE_INIT | N/A | Must initialize SPI and GPIO | - Correct pin config<br>- SPI timing<br>- Reset sequence timing |
-| DISPLAY_INIT | N/A | Must configure display correctly | - Init sequence<br>- Display params<br>- Default mode |
-| SYNCING | Must implement retry logic | Must respond to SYNC | - Timeout<br>- Retry counts<br>- Version check |
-| READY | Track active connection | Maintain ready state | - Command acceptance<br>- State consistency<br>- Error detection |
-| SENDING_COMMAND | Handle ACK/NACK & timeouts | Verify commands & return correct ACK/NACK | - Sequence tracking<br>- Retry handling<br>- Timeout management |
-| RECEIVING_DATA | Accept chunked data & validate checksums | Provide chunked data | - Checksum validation<br>- Sequence check<br>- Buffer mgmt |
-| ERROR | Implement and track error recovery paths | Must support reset/retry | - Error classification<br>- Logging<br>- Automatic resets |
+#### Validation
+- Error logged
+- Resources cleaned up
+- Recovery path valid
 
-### Implementation Gaps Analysis
+## State Transition Matrix
 
-#### Host (Zig) Implementation
+| Current State | Event | Next State | Validation |
+|--------------|-------|------------|------------|
+| HARDWARE_INIT | hardware_ready | DISPLAY_INIT | Hardware configured |
+| HARDWARE_INIT | init_failed | ERROR | Error context valid |
+| DISPLAY_INIT | display_ready | IDLE | Display responding |
+| DISPLAY_INIT | init_failed | ERROR | Error context valid |
+| IDLE | sync_received | SYNCING | Valid SYNC packet |
+| IDLE | invalid_packet | ERROR | Error logged |
+| SYNCING | sync_validated | READY | SYNC_ACK valid |
+| SYNCING | sync_failed | ERROR | Retry count valid |
+| READY | valid_command | COMMAND_PROCESSING | Command valid |
+| READY | image_command | DATA_TRANSFER | Transfer ready |
+| READY | invalid_command | ERROR | Error logged |
+| READY | end_command | IDLE | Clean shutdown |
+| COMMAND_PROCESSING | command_complete | READY | Success status |
+| COMMAND_PROCESSING | command_failed | ERROR | Error context |
+| DATA_TRANSFER | chunk_received | DATA_TRANSFER | Chunk valid |
+| DATA_TRANSFER | transfer_complete | READY | All data received |
+| DATA_TRANSFER | transfer_failed | ERROR | Error logged |
+| ERROR | reset_complete | IDLE | Clean reset |
+| ERROR | retry_connection | SYNCING | Retry valid |
 
-##### Sync & Error Handling
-- Send/receive SYNC, SYNC_ACK
-- Implement timeouts and retries
-- Handle various error states
+## Implementation Guidelines
 
-##### Command Sending
-- Use proper CMD packets
-- Validate ACK/NACK
-
-##### Data Transfer
-- Chunk data into 256-byte payloads
-- Check ACK after each chunk
-- Handle retransmissions
-
-#### Device (C) Implementation
-
-##### Sync & Ack
-- Respond to SYNC with SYNC_ACK
-- Validate checksums, sequence
-
-##### Display Management
-- Handle I (image) and pattern commands (1, 2, 3)
-- Update display states accordingly
-
-##### Data Handling
-- Accept chunked image data
-- Send ACK or NACK per chunk
-- Reset state machine on errors
-
-### Conformance Testing
-
-#### Protocol Sync Test
-- Host sends SYNC
-- Device responds SYNC_ACK
-- Validate timeouts/retries
-
-#### Command/ACK Test
-- Host sends various commands (1, 2, 3, I)
-- Verify device acknowledges or rejects properly
-
-#### Image Transfer Test
-- Send I command
-- Transfer data in chunks
-- Verify display updates and final ACK
-
-#### Error Injection Test
-- Inject bad checksums or sequences
-- Check that device/host retries and recovers
-
-## Protocol Parameters
-
-### Timing
-- Base Timeout: 1000ms
-- Min Retry Delay: 50ms
-- Max Retry Delay: 1000ms
-- Max Retries: 8
-
-### Packet Structure
-- Maximum Packet Size: 512 bytes
-- Header Size: 8 bytes
-- Chunk Size: 256 bytes
-
-### Header Format
-
+### 1. State Management
 ```c
-PacketHeader {
-    type: PacketType,      // 1 byte
-    sequence: u8,          // 1 byte
-    length: u16,           // 2 bytes
-    checksum: u32,         // 4 bytes
+bool transition_state(SystemState next_state, StateCondition condition) {
+    // Validate transition
+    if (!is_valid_transition(current_state, next_state, condition)) {
+        log_error("Invalid transition");
+        return false;
+    }
+    
+    // Execute exit actions
+    execute_exit_actions(current_state);
+    
+    // Update state
+    previous_state = current_state;
+    current_state = next_state;
+    
+    // Execute entry actions
+    execute_entry_actions(next_state);
+    
+    // Log transition
+    log_state_transition(previous_state, current_state);
+    
+    return true;
 }
 ```
 
-### Packet Types
-- 0x1B: SYNC
-- 0x1C: SYNC_ACK
-- 0x1D: CMD
-- 0x1E: DATA
-- 0x1F: ACK
-- 0x20: NACK
+### 2. Error Recovery
+```c
+bool handle_error(ErrorContext *ctx) {
+    // Log error
+    log_error_context(ctx);
+    
+    // Determine recovery path
+    RecoveryPath path = determine_recovery_path(ctx);
+    
+    // Execute recovery
+    switch (path) {
+        case RECOVERY_RESET:
+            return transition_state(IDLE, CONDITION_RESET);
+            
+        case RECOVERY_RETRY:
+            return transition_state(SYNCING, CONDITION_RETRY);
+            
+        case RECOVERY_FAIL:
+            return false;
+    }
+}
+```
 
-### Commands
-- 1: Checkerboard pattern
-- 2: Stripes pattern
-- 3: Gradient pattern
-- I: Image transfer (240×240 RGB565)
-- H: Help menu
-- E: End session
+### 3. Validation
+```c
+bool validate_transition(SystemState current, SystemState next, StateCondition condition) {
+    // Check transition matrix
+    if (!is_valid_state_transition(current, next)) {
+        return false;
+    }
+    
+    // Validate condition
+    if (!is_valid_condition(condition)) {
+        return false;
+    }
+    
+    // Check resources
+    if (!has_required_resources(next)) {
+        return false;
+    }
+    
+    return true;
+}
+```
 
-## Image Transfer States
+## Testing Requirements
 
-### Image Command
-- Send I command
-- Wait for ACK
-- Full packet with checksum
+### 1. State Transitions
+- Test all valid transitions
+- Verify invalid transitions are rejected
+- Test boundary conditions
+- Validate state history
 
-### Data Transfer
-- Split data into 256-byte chunks
-- Send each chunk, wait for ACK
-- Retry on failure (up to 8 times)
-- Use sequence numbers
+### 2. Error Handling
+- Test all error conditions
+- Verify recovery paths
+- Test retry mechanisms
+- Validate error logging
 
-### End Marker
-- Send E command
-- Wait for final ACK
+### 3. Resource Management
+- Test buffer allocation
+- Verify cleanup on exit
+- Test resource limits
+- Validate memory usage
 
-## Error Recovery Strategies
-
-### Sync Loss Recovery
-- Return to IDLE
-- Clear pending data
-- Initiate new SYNC
-- Use exponential backoff on retries
-
-### Checksum Error Recovery
-- Request retransmission (NACK)
-- Track failed attempts (up to 8)
-- Log checksum values
-
-### Sequence Error Recovery
-- Request missing packets (NACK)
-- Reset sequence if unrecoverable
-- Log discontinuities
-
-### Timeout Recovery
-- Use exponential backoff (50ms to 1000ms)
-- Abort after 8 retries
-- Log timing stats
-
-## Debugging Considerations
-
-### State Tracking
-- Log state transitions with timestamps
-- Track retry counts per operation
-
-### Error Monitoring
-- Log errors with context and timestamps
-- Monitor recovery success rates
-
-### Performance Metrics
-- Measure round-trip times
-- Track retry frequencies and checksum failures
-
-### Data Integrity
-- Validate all packet fields
-- Monitor packet sizes and CRC32 performance
+### 4. Performance
+- Measure transition times
+- Track error rates
+- Monitor resource usage
+- Profile critical paths
