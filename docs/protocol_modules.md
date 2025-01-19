@@ -214,6 +214,127 @@ static bool process_packet_impl(const Packet *packet) {
 ```
 
 ### 3. Error Handler Implementation
+
+#### Error Types
+
+The error handling system defines several categories of errors and severity levels to enable appropriate handling and recovery strategies.
+
+##### Error Severity Levels
+```c
+typedef enum {
+    ERROR_SEVERITY_INFO,     // Informational, no impact
+    ERROR_SEVERITY_WARNING,  // Warning, operation can continue
+    ERROR_SEVERITY_ERROR,    // Error, operation failed but recoverable
+    ERROR_SEVERITY_FATAL     // Fatal error, system needs reset
+} ErrorSeverity;
+```
+
+##### Error Categories
+```c
+typedef enum {
+    ERROR_CAT_NONE,
+    ERROR_CAT_HARDWARE,    // Hardware-related errors (SPI, GPIO, display)
+    ERROR_CAT_PROTOCOL,    // Protocol-related errors (packets, sync)
+    ERROR_CAT_STATE,       // State machine errors (invalid transitions)
+    ERROR_CAT_COMMAND,     // Command processing errors (invalid commands)
+    ERROR_CAT_TRANSFER,    // Data transfer errors (chunks, validation)
+    ERROR_CAT_SYSTEM      // System-level errors (initialization, resources)
+} ErrorCategory;
+```
+
+##### Error Details Structure
+```c
+typedef struct {
+    ErrorCategory category;     // Error category
+    ErrorSeverity severity;     // Error severity
+    uint32_t code;             // Error code
+    uint32_t timestamp;        // When error occurred
+    SystemState state;         // State when error occurred
+    char message[128];         // Error message
+    char context[256];         // Additional context
+    bool recoverable;          // Can be recovered from
+} ErrorDetails;
+```
+
+##### Recovery Configuration and Persistence
+
+```c
+// Recovery configuration
+typedef struct {
+    uint32_t max_retries;          // Maximum retry attempts
+    uint32_t base_delay_ms;        // Base delay between retries
+    uint32_t max_delay_ms;         // Maximum delay between retries
+    bool allow_reboot;             // Whether reboot recovery is allowed
+} RecoveryConfig;
+
+// Recovery attempt result
+typedef struct {
+    bool success;            // Recovery succeeded
+    uint32_t duration_ms;    // How long recovery took
+    uint32_t attempts;       // Number of attempts made
+    char message[128];       // Result message
+} RecoveryResult;
+
+// Recovery statistics
+typedef struct {
+    uint32_t total_attempts;     // Total recovery attempts
+    uint32_t successful;         // Successful recoveries
+    uint32_t failed;            // Failed recoveries
+    uint32_t aborted;           // Aborted recoveries
+    uint32_t total_retry_time;  // Total time spent in recovery
+} RecoveryStats;
+
+// Recovery handler type
+typedef bool (*RecoveryHandler)(const ErrorDetails *error);
+```
+
+##### Recovery Persistence Functions
+
+```c
+// Configuration management
+void recovery_configure(const RecoveryConfig *config);
+RecoveryConfig *recovery_get_config(void);
+
+// Recovery handlers
+bool recovery_register_handler(RecoveryStrategy strategy, RecoveryHandler handler);
+RecoveryHandler recovery_get_handler(RecoveryStrategy strategy);
+
+// Statistics tracking
+RecoveryStats *recovery_get_stats(void);
+void recovery_reset_stats(void);
+
+// Recovery execution
+RecoveryResult recovery_attempt(const ErrorDetails *error);
+bool recovery_abort(void);
+bool recovery_is_in_progress(void);
+
+// Retry management
+bool recovery_should_retry(uint32_t attempt_count);
+uint32_t recovery_get_retry_delay(uint32_t attempt_count);
+void recovery_wait_before_retry(uint32_t delay_ms);
+```
+
+##### Error History and Statistics
+```c
+// Error history entry
+typedef struct {
+    ErrorDetails error;        // Error details
+    uint32_t frequency;        // How often this error occurs
+    uint32_t last_seen;       // Last occurrence
+    uint32_t first_seen;      // First occurrence
+} ErrorHistoryEntry;
+
+// Error statistics
+typedef struct {
+    uint32_t total_errors;    // Total errors seen
+    uint32_t recoverable;     // Recoverable errors
+    uint32_t unrecoverable;   // Unrecoverable errors
+    uint32_t retries;         // Total retry attempts
+    uint32_t recoveries;      // Successful recoveries
+} ErrorStats;
+```
+
+#### Implementation Example
 ```c
 // Example error handling
 static const ErrorHandler error_handler = {

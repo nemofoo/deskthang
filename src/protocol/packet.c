@@ -115,6 +115,7 @@ bool packet_validate(const Packet *packet) {
         case PACKET_DATA:
         case PACKET_ACK:
         case PACKET_NACK:
+        case PACKET_DEBUG:
             break;
         default:
             return false;
@@ -226,11 +227,19 @@ void packet_print(const Packet *packet) {
     printf("  Checksum: 0x%08X\n", packet->header.checksum);
     
     if (packet->header.length > 0) {
-        printf("  Payload: ");
-        for (uint16_t i = 0; i < packet->header.length; i++) {
-            printf("%02X ", packet->payload[i]);
+        if (packet->header.type == PACKET_DEBUG) {
+            DebugPayload *debug = (DebugPayload*)packet->payload;
+            printf("  Debug Info:\n");
+            printf("    Level: %s\n", logging_level_to_string(debug->level));
+            printf("    Module: %s\n", debug->module);
+            printf("    Message: %s\n", debug->message);
+        } else {
+            printf("  Payload: ");
+            for (uint16_t i = 0; i < packet->header.length; i++) {
+                printf("%02X ", packet->payload[i]);
+            }
+            printf("\n");
         }
-        printf("\n");
     }
 }
 
@@ -242,6 +251,32 @@ const char *packet_type_to_string(PacketType type) {
         case PACKET_DATA:     return "DATA";
         case PACKET_ACK:      return "ACK";
         case PACKET_NACK:     return "NACK";
+        case PACKET_DEBUG:    return "DEBUG";
         default:              return "UNKNOWN";
     }
+}
+
+// Debug packet payload structure
+typedef struct {
+    LogLevel level;
+    char module[32];
+    char message[256];
+} __attribute__((packed)) DebugPayload;
+
+bool packet_create_debug(Packet *packet, LogLevel level, const char *module, const char *message) {
+    if (!packet || !module || !message) {
+        return false;
+    }
+    
+    DebugPayload payload;
+    payload.level = level;
+    
+    // Copy strings with length limits to prevent buffer overflow
+    strncpy(payload.module, module, sizeof(payload.module) - 1);
+    payload.module[sizeof(payload.module) - 1] = '\0';
+    
+    strncpy(payload.message, message, sizeof(payload.message) - 1);
+    payload.message[sizeof(payload.message) - 1] = '\0';
+    
+    return packet_create(packet, PACKET_DEBUG, (uint8_t*)&payload, sizeof(DebugPayload));
 }

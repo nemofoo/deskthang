@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "protocol.h"
+#include "../error/logging.h"
 
 // Packet types
 typedef enum {
@@ -12,7 +13,8 @@ typedef enum {
     PACKET_CMD = 0x1D,       // Command packet
     PACKET_DATA = 0x1E,      // Data packet
     PACKET_ACK = 0x1F,       // Acknowledgment
-    PACKET_NACK = 0x20       // Negative acknowledgment
+    PACKET_NACK = 0x20,      // Negative acknowledgment
+    PACKET_DEBUG = 0x21      // Debug message packet
 } PacketType;
 
 // Packet header structure (8 bytes)
@@ -41,6 +43,7 @@ bool packet_create_sync(Packet *packet);
 bool packet_create_sync_ack(Packet *packet);
 bool packet_create_ack(Packet *packet, uint8_t sequence);
 bool packet_create_nack(Packet *packet, uint8_t sequence);
+bool packet_create_debug(Packet *packet, LogLevel level, const char *module, const char *message);
 
 // Packet parsing
 bool packet_parse(const uint8_t *data, uint16_t length, Packet *packet);
