@@ -1,5 +1,7 @@
 # Protocol State Machine Reference
 
+> Note: All protocol constants referenced in this document (timeouts, retry counts, etc.) are defined in the [Protocol Constants Reference](protocol_constants.md). Always refer to that document for the authoritative values.
+
 ## Overview
 
 The protocol implements a deterministic state machine that manages all aspects of display communication. This document defines the reference implementation that both host and device must follow.
@@ -9,7 +11,7 @@ The protocol implements a deterministic state machine that manages all aspects o
 ### Host Implementation
 - Must implement full state machine
 - Must handle all error conditions
-- Must support retry mechanisms
+- Must support retry mechanisms (see protocol_constants.md for retry limits and timing)
 - Must validate all transitions
 
 ### Device Implementation  
@@ -29,7 +31,7 @@ The protocol implements five distinct recovery strategies:
 2. RECOVERY_RETRY
    - Simple retry of the failed operation
    - Uses exponential backoff with jitter
-   - Limited by max_retries configuration
+   - Limited by max_retries configuration (see protocol_constants.md MAX_RETRIES)
    - Primary path: ERROR → SYNCING
 
 3. RECOVERY_RESET_STATE
@@ -117,8 +119,8 @@ Establishing protocol synchronization.
 
 #### Entry Actions
 - Send/verify SYNC
-- Start sync timer
-- Initialize retry counter
+- Start sync timer (see protocol_constants.md BASE_TIMEOUT_MS)
+- Initialize retry counter (see protocol_constants.md MAX_RETRIES)
 
 #### Exit Conditions
 - SYNC_ACK valid → READY
@@ -127,7 +129,7 @@ Establishing protocol synchronization.
 
 #### Validation
 - Protocol version match
-- Timing within limits
+- Timing within limits (see protocol_constants.md for timing values)
 - Retry count valid
 
 ### 5. READY
@@ -180,7 +182,7 @@ Handling image data transfer.
 - Transfer failed → ERROR
 
 #### Validation
-- Buffer space available
+- Buffer space available (see protocol_constants.md MAX_PACKET_SIZE)
 - Sequence numbers valid
 - Checksums match
 
@@ -195,13 +197,45 @@ Error handling and recovery state.
 #### Exit Conditions
 - Reset complete → IDLE
 - Retry possible → SYNCING
-- Reinit needed → HARDWARE_INIT/DISPLAY_INIT
-- Reboot needed → HARDWARE_INIT (after reboot)
 
 #### Validation
 - Error logged
 - Resources cleaned up
 - Recovery path valid
+
+#### Error State Transitions
+The ERROR state is a special state that:
+- Can be entered from any other state
+- Has well-defined exit paths (IDLE or SYNCING)
+- Requires explicit recovery action
+- Maintains error context during recovery
+
+```c
+// Example error state transition
+bool handle_error_state(ErrorDetails *error) {
+    // Must be in ERROR state
+    if (get_current_state() != STATE_ERROR) {
+        return false;
+    }
+    
+    // Attempt recovery
+    if (error_is_recoverable(error)) {
+        // Try to recover to previous state
+        return state_machine_transition(error->state, CONDITION_RECOVERED);
+    }
+    
+    // Force reset to IDLE
+    return state_machine_transition(STATE_IDLE, CONDITION_RESET);
+}
+```
+
+#### Error Recovery Flow
+1. State detects error condition
+2. Transitions to ERROR state
+3. Error handler determines recovery strategy
+4. Recovery executes with timeout/retry logic
+5. On success: transition to recovery target state
+6. On failure: remain in ERROR state for manual intervention
 
 ## State Transition Matrix
 
@@ -321,14 +355,15 @@ bool validate_transition(SystemState current, SystemState next, StateCondition c
 ### 1. State Transitions
 - Test all valid transitions
 - Verify invalid transitions are rejected
-- Test boundary conditions
-- Validate state history
+- Test error recovery paths
+- Validate state changes
 
 ### 2. Error Handling
-- Test all error conditions
-- Verify recovery paths
-- Test retry mechanisms
+- Test timeout handling
+- Verify retry logic
+- Test backoff delays
 - Validate error logging
+- Test error recovery paths
 
 ### 3. Resource Management
 - Test buffer allocation

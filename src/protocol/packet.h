@@ -43,7 +43,7 @@ bool packet_create_sync(Packet *packet);
 bool packet_create_sync_ack(Packet *packet);
 bool packet_create_ack(Packet *packet, uint8_t sequence);
 bool packet_create_nack(Packet *packet, uint8_t sequence);
-bool packet_create_debug(Packet *packet, LogLevel level, const char *module, const char *message);
+bool packet_create_debug(Packet *packet, const char *module, const char *message);
 
 // Packet parsing
 bool packet_parse(const uint8_t *data, uint16_t length, Packet *packet);

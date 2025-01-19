@@ -1,252 +1,122 @@
 #include "transition.h"
-#include "context.h"
-#include <stddef.h>
+#include "../error/logging.h"
 
-// State transition matrix from protocol specification
-static const StateTransition VALID_TRANSITIONS[] = {
-    // Hardware Initialization
-    {
-        .from_state = STATE_HARDWARE_INIT,
-        .to_state = STATE_DISPLAY_INIT,
-        .condition = CONDITION_HARDWARE_READY,
-        .validator = validate_hardware_init
-    },
-    {
-        .from_state = STATE_HARDWARE_INIT,
-        .to_state = STATE_ERROR,
-        .condition = CONDITION_HARDWARE_FAILED,
-        .validator = NULL
-    },
+// Add at top of file after includes
+extern const StateActions STATE_ACTIONS[];
+
+// Valid state transitions table
+static const TransitionRule VALID_TRANSITIONS[] = {
+    // Hardware init transitions
+    {STATE_HARDWARE_INIT, STATE_DISPLAY_INIT, CONDITION_HARDWARE_READY},
+    {STATE_HARDWARE_INIT, STATE_ERROR, CONDITION_ERROR},
     
-    // Display Initialization
-    {
-        .from_state = STATE_DISPLAY_INIT,
-        .to_state = STATE_IDLE,
-        .condition = CONDITION_DISPLAY_READY,
-        .validator = validate_display_init
-    },
-    {
-        .from_state = STATE_DISPLAY_INIT,
-        .to_state = STATE_ERROR,
-        .condition = CONDITION_DISPLAY_FAILED,
-        .validator = NULL
-    },
+    // Display init transitions
+    {STATE_DISPLAY_INIT, STATE_IDLE, CONDITION_DISPLAY_READY},
+    {STATE_DISPLAY_INIT, STATE_ERROR, CONDITION_ERROR},
     
-    // Protocol States
-    {
-        .from_state = STATE_IDLE,
-        .to_state = STATE_SYNCING,
-        .condition = CONDITION_SYNC_RECEIVED,
-        .validator = validate_sync_request
-    },
-    {
-        .from_state = STATE_IDLE,
-        .to_state = STATE_ERROR,
-        .condition = CONDITION_COMMAND_FAILED,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_SYNCING,
-        .to_state = STATE_READY,
-        .condition = CONDITION_SYNC_VALIDATED,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_SYNCING,
-        .to_state = STATE_ERROR,
-        .condition = CONDITION_SYNC_FAILED,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_READY,
-        .to_state = STATE_COMMAND_PROCESSING,
-        .condition = CONDITION_COMMAND_RECEIVED,
-        .validator = validate_command
-    },
-    {
-        .from_state = STATE_READY,
-        .to_state = STATE_DATA_TRANSFER,
-        .condition = CONDITION_TRANSFER_START,
-        .validator = validate_transfer
-    },
-    {
-        .from_state = STATE_READY,
-        .to_state = STATE_IDLE,
-        .condition = CONDITION_COMMAND_COMPLETE,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_READY,
-        .to_state = STATE_ERROR,
-        .condition = CONDITION_COMMAND_FAILED,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_COMMAND_PROCESSING,
-        .to_state = STATE_READY,
-        .condition = CONDITION_COMMAND_COMPLETE,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_COMMAND_PROCESSING,
-        .to_state = STATE_ERROR,
-        .condition = CONDITION_COMMAND_FAILED,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_DATA_TRANSFER,
-        .to_state = STATE_DATA_TRANSFER,
-        .condition = CONDITION_TRANSFER_CHUNK,
-        .validator = validate_transfer
-    },
-    {
-        .from_state = STATE_DATA_TRANSFER,
-        .to_state = STATE_READY,
-        .condition = CONDITION_TRANSFER_COMPLETE,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_DATA_TRANSFER,
-        .to_state = STATE_ERROR,
-        .condition = CONDITION_TRANSFER_FAILED,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_ERROR,
-        .to_state = STATE_IDLE,
-        .condition = CONDITION_RESET,
-        .validator = NULL
-    },
-    {
-        .from_state = STATE_ERROR,
-        .to_state = STATE_SYNCING,
-        .condition = CONDITION_RETRY,
-        .validator = NULL
-    }
+    // Idle transitions
+    {STATE_IDLE, STATE_SYNCING, CONDITION_SYNC_RECEIVED},
+    {STATE_IDLE, STATE_ERROR, CONDITION_ERROR},
+    
+    // Syncing transitions
+    {STATE_SYNCING, STATE_READY, CONDITION_SYNC_VALID},
+    {STATE_SYNCING, STATE_SYNCING, CONDITION_RETRY},
+    {STATE_SYNCING, STATE_ERROR, CONDITION_ERROR},
+    
+    // Ready transitions
+    {STATE_READY, STATE_COMMAND_PROCESSING, CONDITION_COMMAND_VALID},
+    {STATE_READY, STATE_DATA_TRANSFER, CONDITION_TRANSFER_START},
+    {STATE_READY, STATE_IDLE, CONDITION_RESET},
+    {STATE_READY, STATE_ERROR, CONDITION_ERROR},
+    
+    // Command processing transitions
+    {STATE_COMMAND_PROCESSING, STATE_READY, CONDITION_TRANSFER_COMPLETE},
+    {STATE_COMMAND_PROCESSING, STATE_ERROR, CONDITION_ERROR},
+    
+    // Data transfer transitions
+    {STATE_DATA_TRANSFER, STATE_DATA_TRANSFER, CONDITION_TRANSFER_START},
+    {STATE_DATA_TRANSFER, STATE_READY, CONDITION_TRANSFER_COMPLETE},
+    {STATE_DATA_TRANSFER, STATE_ERROR, CONDITION_ERROR},
+    
+    // Error state transitions
+    {STATE_ERROR, STATE_IDLE, CONDITION_RESET},
+    {STATE_ERROR, STATE_SYNCING, CONDITION_RETRY},
+    
+    // Sentinel
+    {STATE_ERROR, STATE_ERROR, CONDITION_NONE}
 };
 
-// Find matching transition in transition matrix
-const StateTransition *transition_find(SystemState from, SystemState to, StateCondition condition) {
-    for (size_t i = 0; i < sizeof(VALID_TRANSITIONS) / sizeof(VALID_TRANSITIONS[0]); i++) {
-        const StateTransition *transition = &VALID_TRANSITIONS[i];
-        if (transition->from_state == from &&
-            transition->to_state == to &&
-            transition->condition == condition) {
-            return transition;
+bool transition_is_valid(const StateContext *ctx, SystemState next, StateCondition condition) {
+    if (!ctx) return false;
+    
+    // Any state can transition to ERROR with CONDITION_ERROR
+    if (next == STATE_ERROR && condition == CONDITION_ERROR) {
+        return true;
+    }
+    
+    // Look up transition in table
+    const TransitionRule *rule = VALID_TRANSITIONS;
+    while (rule->condition != CONDITION_NONE) {
+        if (rule->from_state == ctx->current && 
+            rule->to_state == next && 
+            rule->condition == condition) {
+            return true;
         }
-    }
-    return NULL;
-}
-
-// Validate state transition
-bool transition_is_valid(SystemState from, SystemState to, StateCondition condition) {
-    const StateTransition *transition = transition_find(from, to, condition);
-    if (!transition) {
-        return false;
+        rule++;
     }
     
-    // Execute validator if present
-    if (transition->validator && !transition->validator()) {
-        return false;
-    }
-    
-    return true;
-}
-
-// Execute state transition
-bool transition_execute(SystemState to_state, StateCondition condition) {
-    StateContext *ctx = state_context_get();
-    return state_machine_transition(to_state, condition);
-}
-
-// Execute state entry actions
-bool transition_execute_entry_actions(SystemState state) {
-    extern const StateActions STATE_ACTIONS[];
-    if (STATE_ACTIONS[state].on_entry) {
-        STATE_ACTIONS[state].on_entry();
-    }
-    return true;
-}
-
-// Execute state exit actions
-bool transition_execute_exit_actions(SystemState state) {
-    extern const StateActions STATE_ACTIONS[];
-    if (STATE_ACTIONS[state].on_exit) {
-        STATE_ACTIONS[state].on_exit();
-    }
-    return true;
-}
-
-// Execute state error handler
-bool transition_execute_error_handler(SystemState state, void *error_context) {
-    extern const StateActions STATE_ACTIONS[];
-    if (STATE_ACTIONS[state].on_error) {
-        STATE_ACTIONS[state].on_error(error_context);
-    }
-    return true;
-}
-
-// Log state transition
-void transition_log(SystemState from, SystemState to, StateCondition condition) {
-    // TODO: Implement logging
-}
-
-// Log transition error
-void transition_log_error(SystemState state, StateCondition condition, const char *error_msg) {
-    // TODO: Implement error logging
-}
-
-// Get recovery strategy for current state
-RecoveryStrategy transition_get_recovery_strategy(SystemState current_state) {
-    StateContext *ctx = state_context_get();
-    
-    // If we haven't exceeded retry limit, attempt retry
-    if (ctx->retry_count < 8) {
-        return RECOVERY_RETRY;
-    }
-    
-    // If retries exhausted, try reset
-    if (current_state != STATE_HARDWARE_INIT && 
-        current_state != STATE_DISPLAY_INIT) {
-        return RECOVERY_RESET;
-    }
-    
-    // Hardware/display init failures require fallback
-    return RECOVERY_FALLBACK;
-}
-
-// Execute recovery strategy
-bool transition_execute_recovery(RecoveryStrategy strategy) {
-    StateContext *ctx = state_context_get();
-    
-    switch (strategy) {
-        case RECOVERY_RESET:
-            state_context_reset();
-            return transition_execute(STATE_IDLE, CONDITION_RESET);
-            
-        case RECOVERY_RETRY:
-            if (!state_context_increment_retry()) {
-                return false;
-            }
-            return transition_execute(STATE_SYNCING, CONDITION_RETRY);
-            
-        case RECOVERY_FALLBACK:
-            // TODO: Implement fallback behavior
-            return false;
-            
-        case RECOVERY_FAIL:
-            return false;
-    }
+    // Log invalid transition attempt
+    char context[256];
+    snprintf(context, sizeof(context),
+        "From %s to %s (%s)",
+        state_to_string(ctx->current),
+        state_to_string(next),
+        condition_to_string(condition));
+    logging_write_with_context("Transition", "Invalid transition", context);
     
     return false;
 }
 
-// Calculate exponential backoff delay
-uint32_t transition_calculate_backoff_delay(uint32_t retry_count) {
-    // Base delay of 50ms with exponential backoff up to 1000ms
-    uint32_t delay = 50;
-    for (uint32_t i = 0; i < retry_count && delay < 1000; i++) {
-        delay *= 2;
+bool transition_can_recover(const StateContext *ctx) {
+    if (!ctx || ctx->current != STATE_ERROR) {
+        return false;
     }
-    return delay;
+    
+    // Can only recover if we have retries available
+    return context_can_retry(ctx);
+}
+
+bool transition_entry(StateContext *ctx) {
+    if (!ctx) return false;
+    
+    // Update timing
+    context_update_timing(ctx);
+    
+    // Reset retry count on state entry unless entering ERROR state
+    if (ctx->current != STATE_ERROR) {
+        context_reset_retry(ctx);
+    }
+    
+    // Execute state-specific entry actions
+    const StateActions *actions = &STATE_ACTIONS[ctx->current];
+    if (actions->on_entry) {
+        actions->on_entry();
+    }
+    
+    return true;
+}
+
+bool transition_exit(StateContext *ctx) {
+    if (!ctx) return false;
+    
+    // Execute state-specific exit actions
+    const StateActions *actions = &STATE_ACTIONS[ctx->current];
+    if (actions->on_exit) {
+        actions->on_exit();
+    }
+    
+    // Clear any state-specific data
+    context_clear_state_data(ctx);
+    
+    return true;
 }

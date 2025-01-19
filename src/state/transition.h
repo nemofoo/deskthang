@@ -1,8 +1,24 @@
-#ifndef DESKTHANG_STATE_TRANSITION_H
-#define DESKTHANG_STATE_TRANSITION_H
+#ifndef DESKTHANG_TRANSITION_H
+#define DESKTHANG_TRANSITION_H
 
-#include "state.h"
 #include <stdbool.h>
+#include "state.h"
+#include "context.h"
+
+// Transition validation
+bool transition_is_valid(const StateContext *ctx, SystemState next, StateCondition condition);
+bool transition_can_recover(const StateContext *ctx);
+
+// Transition execution
+bool transition_entry(StateContext *ctx);
+bool transition_exit(StateContext *ctx);
+
+// Transition validation table entry
+typedef struct {
+    SystemState from_state;
+    SystemState to_state;
+    StateCondition condition;
+} TransitionRule;
 
 // State transition definition
 typedef struct {
@@ -13,7 +29,6 @@ typedef struct {
 } StateTransition;
 
 // Transition validation functions
-bool transition_is_valid(SystemState from, SystemState to, StateCondition condition);
 bool transition_execute(SystemState to_state, StateCondition condition);
 const StateTransition *transition_find(SystemState from, SystemState to, StateCondition condition);
 
@@ -39,4 +54,4 @@ RecoveryStrategy transition_get_recovery_strategy(SystemState current_state);
 bool transition_execute_recovery(RecoveryStrategy strategy);
 uint32_t transition_calculate_backoff_delay(uint32_t retry_count);
 
-#endif // DESKTHANG_STATE_TRANSITION_H
+#endif // DESKTHANG_TRANSITION_H

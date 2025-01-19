@@ -104,6 +104,7 @@ bool packet_parse(const uint8_t *data, uint16_t length, Packet *packet) {
 // Validate packet
 bool packet_validate(const Packet *packet) {
     if (!packet) {
+        logging_write("Protocol", "Null packet received");
         return false;
     }
     
@@ -118,7 +119,23 @@ bool packet_validate(const Packet *packet) {
         case PACKET_DEBUG:
             break;
         default:
+            logging_write_with_context("Protocol", 
+                                     "Invalid packet type",
+                                     packet_type_to_string(packet->header.type));
             return false;
+    }
+    
+    // Validate protocol version (for SYNC packets)
+    if (packet->header.type == PACKET_SYNC) {
+        uint8_t version = packet->payload[0];
+        if (version != PROTOCOL_VERSION) {
+            char context[64];
+            snprintf(context, sizeof(context), 
+                    "Expected v%d, got v%d", 
+                    PROTOCOL_VERSION, version);
+            logging_write_with_context("Protocol", "Version mismatch", context);
+            return false;
+        }
     }
     
     // Validate length
@@ -230,7 +247,6 @@ void packet_print(const Packet *packet) {
         if (packet->header.type == PACKET_DEBUG) {
             DebugPayload *debug = (DebugPayload*)packet->payload;
             printf("  Debug Info:\n");
-            printf("    Level: %s\n", logging_level_to_string(debug->level));
             printf("    Module: %s\n", debug->module);
             printf("    Message: %s\n", debug->message);
         } else {
@@ -258,18 +274,16 @@ const char *packet_type_to_string(PacketType type) {
 
 // Debug packet payload structure
 typedef struct {
-    LogLevel level;
     char module[32];
     char message[256];
 } __attribute__((packed)) DebugPayload;
 
-bool packet_create_debug(Packet *packet, LogLevel level, const char *module, const char *message) {
+bool packet_create_debug(Packet *packet, const char *module, const char *message) {
     if (!packet || !module || !message) {
         return false;
     }
     
     DebugPayload payload;
-    payload.level = level;
     
     // Copy strings with length limits to prevent buffer overflow
     strncpy(payload.module, module, sizeof(payload.module) - 1);

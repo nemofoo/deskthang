@@ -207,7 +207,11 @@ void recovery_log_attempt(const ErrorDetails *error, RecoveryStrategy strategy, 
              recovery_strategy_to_string(strategy),
              success ? "Success" : "Failed");
              
-    logging_write(success ? LOG_LEVEL_INFO : LOG_LEVEL_ERROR,
-                 "Recovery",
-                 message);
+    logging_write("Recovery", message);
+    
+    // Should add:
+    // - Timing information
+    // - Retry count
+    // - Backoff delay used
+    // - More detailed error context
 }

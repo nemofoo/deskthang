@@ -1,5 +1,7 @@
 # Protocol State Transitions
 
+> Note: All protocol constants referenced in this document (timeouts, retry counts, chunk sizes, etc.) are defined in the [Protocol Constants Reference](protocol_constants.md). Always refer to that document for the authoritative values.
+
 ## Core Operation Sequences
 
 ### 1. Connection Establishment
@@ -11,7 +13,7 @@ sequenceDiagram
     participant Display
     
     Note over Host,Device: Initial Connection
-    Host->>Device: SYNC Packet (v1)
+    Host->>Device: SYNC Packet (PROTOCOL_VERSION)
     Device->>Device: Validate Protocol Version
     Device-->>Host: SYNC_ACK
     
@@ -39,7 +41,7 @@ sequenceDiagram
     StateMachine->>StateMachine: Enter DATA_TRANSFER
     StateMachine-->>Host: ACK
     
-    loop For Each 256-byte Chunk
+    loop For Each Chunk (see protocol_constants.md CHUNK_SIZE)
         Host->>StateMachine: Data Chunk
         StateMachine->>StateMachine: Validate Chunk
         StateMachine->>Display: Update Display
@@ -67,7 +69,7 @@ sequenceDiagram
     StateMachine->>ErrorHandler: Get Recovery Plan
     ErrorHandler-->>StateMachine: Use Backoff
     
-    loop Until Success or Max Retries
+    loop Until Success or MAX_RETRIES (see protocol_constants.md)
         StateMachine->>Host: Request Retry
         Host->>StateMachine: Retry Data
         
@@ -220,7 +222,7 @@ bool error_handler_attempt_recovery(ErrorContext *ctx) {
     // Get recovery strategy
     RecoveryStrategy strategy = get_recovery_strategy(ctx);
     
-    // Calculate retry delay
+    // Calculate retry delay (see protocol_constants.md for timing values)
     uint32_t delay = calculate_backoff_delay(ctx->retry_count);
     
     // Log recovery attempt
@@ -261,7 +263,7 @@ bool transfer_manager_process_chunk(const uint8_t *data, size_t len) {
         return false;
     }
     
-    // Validate chunk
+    // Validate chunk size (see protocol_constants.md CHUNK_SIZE)
     if (!validate_chunk(data, len)) {
         error_handler_report(ERROR_INVALID_CHUNK);
         return false;
@@ -296,7 +298,7 @@ bool transfer_manager_process_chunk(const uint8_t *data, size_t len) {
 ### 2. Error Handling
 - Each state defines error handlers
 - Support multiple recovery strategies
-- Implement exponential backoff
+- Implement exponential backoff (see protocol_constants.md for timing values)
 - Log recovery attempts
 
 ### 3. Resource Management

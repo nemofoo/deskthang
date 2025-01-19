@@ -1,5 +1,7 @@
 # Protocol Implementation Modules
 
+> Note: All protocol constants referenced in this document are defined in the [Protocol Constants Reference](protocol_constants.md). Always refer to that document for the authoritative values.
+
 ## Architecture Overview
 
 ```mermaid
@@ -261,9 +263,9 @@ typedef struct {
 ```c
 // Recovery configuration
 typedef struct {
-    uint32_t max_retries;          // Maximum retry attempts
-    uint32_t base_delay_ms;        // Base delay between retries
-    uint32_t max_delay_ms;         // Maximum delay between retries
+    uint32_t max_retries;          // Maximum retry attempts (see protocol_constants.md MAX_RETRIES)
+    uint32_t base_delay_ms;        // Base delay between retries (see protocol_constants.md BASE_TIMEOUT_MS)
+    uint32_t max_delay_ms;         // Maximum delay between retries (see protocol_constants.md MAX_RETRY_DELAY_MS)
     bool allow_reboot;             // Whether reboot recovery is allowed
 } RecoveryConfig;
 
@@ -308,30 +310,10 @@ RecoveryResult recovery_attempt(const ErrorDetails *error);
 bool recovery_abort(void);
 bool recovery_is_in_progress(void);
 
-// Retry management
+// Retry management (see protocol_constants.md for timing values)
 bool recovery_should_retry(uint32_t attempt_count);
 uint32_t recovery_get_retry_delay(uint32_t attempt_count);
 void recovery_wait_before_retry(uint32_t delay_ms);
-```
-
-##### Error History and Statistics
-```c
-// Error history entry
-typedef struct {
-    ErrorDetails error;        // Error details
-    uint32_t frequency;        // How often this error occurs
-    uint32_t last_seen;       // Last occurrence
-    uint32_t first_seen;      // First occurrence
-} ErrorHistoryEntry;
-
-// Error statistics
-typedef struct {
-    uint32_t total_errors;    // Total errors seen
-    uint32_t recoverable;     // Recoverable errors
-    uint32_t unrecoverable;   // Unrecoverable errors
-    uint32_t retries;         // Total retry attempts
-    uint32_t recoveries;      // Successful recoveries
-} ErrorStats;
 ```
 
 #### Implementation Example

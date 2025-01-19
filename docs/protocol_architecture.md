@@ -1,5 +1,7 @@
 # Protocol Architecture Reference
 
+> Note: All protocol constants referenced in this document are defined in the [Protocol Constants Reference](protocol_constants.md). Always refer to that document for the authoritative values.
+
 ## Core Concepts
 
 The protocol implements a robust state machine for managing display communication between a host and device. It handles synchronization, commands, data transfer, and error recovery with clearly defined states and transitions.
@@ -98,7 +100,39 @@ typedef struct {
 } HardwareConfig;
 ```
 
-### 2. Protocol Layer
+### 2. Serial Communication Layer
+
+Manages USB CDC communication between host and device.
+
+```c
+// Core Functions
+bool serial_init(uint32_t baud_rate);              // Initialize USB CDC
+bool serial_read_exact(uint8_t *buffer,            // Read exact bytes
+                      uint16_t size, 
+                      uint32_t timeout_ms);
+int16_t serial_read(uint8_t *buffer,              // Read available bytes
+                   uint16_t size, 
+                   uint32_t timeout_ms);
+bool serial_write_exact(const uint8_t *buffer,     // Write exact bytes
+                       uint16_t size);
+int16_t serial_write(const uint8_t *buffer,       // Write available bytes
+                    uint16_t size);
+
+// Buffer Management
+void serial_flush(void);                          // Flush TX buffer
+bool serial_available(void);                      // Check RX buffer
+void serial_clear(void);                         // Clear RX buffer
+
+// Key Features
+- Protocol-aware buffering (MAX_PACKET_SIZE, CHUNK_SIZE)
+- Timeout-based operations with error reporting
+- Automatic flush on chunk boundaries
+- Integration with error logging system
+- Clean connection management
+```
+
+
+### 3. Protocol Layer
 
 Manages packet handling and protocol state.
 
@@ -110,17 +144,17 @@ typedef struct {
     
     // Timing configuration
     struct {
-        uint32_t base_timeout_ms;      // Base timeout (1000ms)
-        uint32_t min_retry_delay_ms;   // Min retry delay (50ms)
-        uint32_t max_retry_delay_ms;   // Max retry delay (1000ms)
-        uint8_t max_retries;           // Max retry attempts (8)
+        uint32_t base_timeout_ms;      // Base timeout (see protocol_constants.md)
+        uint32_t min_retry_delay_ms;   // Min retry delay (see protocol_constants.md)
+        uint32_t max_retry_delay_ms;   // Max retry delay (see protocol_constants.md)
+        uint8_t max_retries;           // Max retry attempts (see protocol_constants.md)
     } timing;
     
     // Buffer configuration
     struct {
-        uint16_t max_packet_size;     // Max packet size (512)
-        uint16_t chunk_size;          // Transfer chunk size (256)
-        uint8_t header_size;          // Header size in bytes (8)
+        uint16_t max_packet_size;     // Max packet size (see protocol_constants.md)
+        uint16_t chunk_size;          // Transfer chunk size (see protocol_constants.md)
+        uint8_t header_size;          // Header size in bytes (see protocol_constants.md)
     } limits;
     
     // State tracking
@@ -130,7 +164,7 @@ typedef struct {
 } ProtocolConfig;
 ```
 
-### 3. State Management Layer
+### 4. State Management Layer
 
 Controls state transitions and validation.
 
@@ -154,9 +188,33 @@ typedef struct {
 } StateContext;
 ```
 
-### 4. Error Management Layer
+### 5. Error Management Layer
 
 Handles error detection, logging, and recovery.
+
+The error system is tightly integrated with the state machine:
+- All states can transition to ERROR state
+- ERROR state has defined recovery paths
+- Error context determines recovery strategy
+- Recovery success determines next state
+
+```mermaid
+sequenceDiagram
+    participant State as Current State
+    participant Error as Error Handler
+    participant Recovery as Recovery System
+    participant Next as Next State
+    
+    State->>Error: Detect Error
+    Error->>State: Transition to ERROR
+    Error->>Recovery: Attempt Recovery
+    
+    alt Recovery Successful
+        Recovery->>Next: Transition to Recovery Target
+    else Recovery Failed
+        Recovery->>Error: Remain in ERROR
+    end
+```
 
 ```c
 typedef struct {
@@ -176,6 +234,27 @@ typedef struct {
 } ErrorContext;
 ```
 
+### Error Handling System
+
+The error system provides:
+1. Error Tracking
+   - Category and severity classification
+   - Error codes and messages
+   - Recoverable status
+   - System state context
+
+2. Recovery Management
+   - Multiple recovery strategies (NONE, RETRY, RESET_STATE, REINIT, REBOOT)
+   - Strategy selection based on error type
+   - Automatic retry with backoff
+   - Recovery success tracking
+
+3. Logging Integration
+   - Structured error logging with context
+   - Recovery attempt logging
+   - Debug packet support
+   - USB CDC transmission
+
 ## Implementation Requirements
 
 ### 1. State Management
@@ -191,8 +270,8 @@ typedef struct {
 - Implement exponential backoff
 - Log all errors with context
 - Support multiple recovery paths
-- Track error statistics
-- Maintain error history
+- Track current error state
+- Log errors as they occur
 
 ### 3. Buffer Management
 
@@ -214,10 +293,11 @@ typedef struct {
 
 ### 1. Core Timeouts
 
-- Base timeout: 1000ms
-- Minimum retry delay: 50ms
-- Maximum retry delay: 1000ms
-- Maximum retries: 8
+See [Protocol Constants Reference](protocol_constants.md#timing-constants) for the authoritative values:
+- Base timeout (BASE_TIMEOUT_MS)
+- Minimum retry delay (MIN_RETRY_DELAY_MS)
+- Maximum retry delay (MAX_RETRY_DELAY_MS)
+- Maximum retries (MAX_RETRIES)
 
 ### 2. Backoff Algorithm
 

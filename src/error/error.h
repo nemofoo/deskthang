@@ -36,23 +36,6 @@ typedef struct {
     bool recoverable;          // Can be recovered from
 } ErrorDetails;
 
-// Error history entry
-typedef struct {
-    ErrorDetails error;        // Error details
-    uint32_t frequency;        // How often this error occurs
-    uint32_t last_seen;        // Last occurrence
-    uint32_t first_seen;       // First occurrence
-} ErrorHistoryEntry;
-
-// Error statistics
-typedef struct {
-    uint32_t total_errors;     // Total errors seen
-    uint32_t recoverable;      // Recoverable errors
-    uint32_t unrecoverable;    // Unrecoverable errors
-    uint32_t retries;          // Total retry attempts
-    uint32_t recoveries;       // Successful recoveries
-} ErrorStats;
-
 // Error management functions
 bool error_init(void);
 void error_reset(void);
@@ -64,14 +47,6 @@ void error_report_with_context(ErrorCategory category, ErrorSeverity severity, u
 
 // Error query
 ErrorDetails *error_get_last(void);
-ErrorDetails *error_get_by_code(uint32_t code);
-ErrorHistoryEntry *error_get_history(void);
-uint32_t error_get_history_count(void);
-
-// Error statistics
-ErrorStats *error_get_stats(void);
-void error_update_stats(bool recovered);
-void error_reset_stats(void);
 
 // Error classification
 bool error_is_recoverable(const ErrorDetails *error);
@@ -80,8 +55,6 @@ ErrorSeverity error_get_severity(uint32_t code);
 
 // Debug support
 void error_print_last(void);
-void error_print_history(void);
-void error_print_stats(void);
 const char *error_severity_to_string(ErrorSeverity severity);
 const char *error_category_to_string(ErrorCategory category);
 

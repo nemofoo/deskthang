@@ -5,35 +5,36 @@
 #include <stdbool.h>
 #include "../state/state.h"
 
-// Protocol version and constants
+// Protocol version
 #define PROTOCOL_VERSION 1
-#define MAX_PACKET_SIZE 512
-#define CHUNK_SIZE 256
-#define HEADER_SIZE 8
-#define BASE_TIMEOUT_MS 1000
-#define MIN_RETRY_DELAY_MS 50
-#define MAX_RETRY_DELAY_MS 1000
-#define MAX_RETRIES 8
+
+// Buffer sizes
+#define MAX_PACKET_SIZE 512  // Maximum packet size in bytes
+#define CHUNK_SIZE 256      // Size of data transfer chunks
+#define HEADER_SIZE 8       // Size of packet header in bytes
+
+// Timing constants
+#define BASE_TIMEOUT_MS 1000    // Base timeout for operations
+#define MIN_RETRY_DELAY_MS 50   // Minimum delay between retries
+#define MAX_RETRY_DELAY_MS 1000 // Maximum delay between retries
+#define MAX_RETRIES 8          // Maximum number of retry attempts
 
 // Protocol configuration
 typedef struct {
-    // Protocol version
-    uint8_t version;          // Must be 1
+    uint8_t version;          // Protocol version
     uint8_t sequence;         // Current sequence number
     
-    // Timing configuration
     struct {
-        uint32_t base_timeout_ms;      // Base timeout (1000ms)
-        uint32_t min_retry_delay_ms;   // Min retry delay (50ms)
-        uint32_t max_retry_delay_ms;   // Max retry delay (1000ms)
-        uint8_t max_retries;           // Max retry attempts (8)
+        uint32_t base_timeout_ms;      // Base timeout
+        uint32_t min_retry_delay_ms;   // Min retry delay
+        uint32_t max_retry_delay_ms;   // Max retry delay
+        uint8_t max_retries;           // Max retry attempts
     } timing;
     
-    // Buffer configuration
     struct {
-        uint16_t max_packet_size;     // Max packet size (512)
-        uint16_t chunk_size;          // Transfer chunk size (256)
-        uint8_t header_size;          // Header size in bytes (8)
+        uint16_t max_packet_size;     // Max packet size
+        uint16_t chunk_size;          // Transfer chunk size
+        uint8_t header_size;          // Header size in bytes
     } limits;
     
     // State tracking

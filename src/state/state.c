@@ -1,7 +1,7 @@
 #include "state.h"
 #include "context.h"
 #include "transition.h"
-#include <string.h>
+#include "../error/logging.h"
 
 // State action handlers for each state
 static const StateActions STATE_ACTIONS[] = {
@@ -162,72 +162,126 @@ static void error_error(void *ctx) {
     // Handle errors in error state
 }
 
-// Core state machine functions implementation
+// Current state machine context
+static StateContext g_state_context;
+
 bool state_machine_init(void) {
-    // Initialize state context
-    if (!state_context_init()) {
-        return false;
-    }
-
-    // Start in HARDWARE_INIT state
-    StateContext *ctx = state_context_get();
-    ctx->current = STATE_HARDWARE_INIT;
-    ctx->previous = STATE_HARDWARE_INIT;
-    ctx->transition_time = 0;
-    ctx->retry_count = 0;
-    ctx->error_count = 0;
-    ctx->state_data = NULL;
-
-    // Execute initial state entry actions
-    return transition_execute_entry_actions(STATE_HARDWARE_INIT);
-}
-
-bool state_machine_transition(SystemState next_state, StateCondition condition) {
-    StateContext *ctx = state_context_get();
+    // Initialize context
+    context_init(&g_state_context);
     
-    // Validate transition
-    if (!transition_is_valid(ctx->current, next_state, condition)) {
-        transition_log_error(ctx->current, condition, "Invalid transition");
-        return false;
-    }
-    
-    // Execute exit actions for current state
-    if (!transition_execute_exit_actions(ctx->current)) {
-        transition_log_error(ctx->current, condition, "Exit actions failed");
-        return false;
-    }
-    
-    // Update state
-    ctx->previous = ctx->current;
-    ctx->current = next_state;
-    state_context_update_transition_time();
-    
-    // Execute entry actions for new state
-    if (!transition_execute_entry_actions(next_state)) {
-        transition_log_error(next_state, condition, "Entry actions failed");
-        return false;
-    }
-    
-    // Log transition
-    transition_log(ctx->previous, ctx->current, condition);
+    // Start in hardware init state
+    g_state_context.current = STATE_HARDWARE_INIT;
+    g_state_context.previous = STATE_HARDWARE_INIT;
+    g_state_context.entry_time = get_system_time();
     
     return true;
 }
 
+bool state_machine_transition(SystemState next_state, StateCondition condition) {
+    // Validate transition
+    if (!transition_is_valid(&g_state_context, next_state, condition)) {
+        logging_write("State", "Invalid transition attempted");
+        return false;
+    }
+    
+    // Execute exit actions for current state
+    if (!transition_exit(&g_state_context)) {
+        logging_write("State", "Exit actions failed");
+        return state_machine_handle_error();
+    }
+    
+    // Update state
+    g_state_context.previous = g_state_context.current;
+    g_state_context.current = next_state;
+    g_state_context.entry_time = get_system_time();
+    g_state_context.last_condition = condition;
+    
+    // Execute entry actions for new state
+    if (!transition_entry(&g_state_context)) {
+        logging_write("State", "Entry actions failed");
+        return state_machine_handle_error();
+    }
+    
+    // Log transition
+    char context[256];
+    snprintf(context, sizeof(context),
+        "From %s to %s (%s)",
+        state_to_string(g_state_context.previous),
+        state_to_string(g_state_context.current),
+        condition_to_string(condition));
+    logging_write_with_context("State", "State transition", context);
+    
+    return true;
+}
+
+bool state_machine_handle_error(void) {
+    // Already in error state?
+    if (g_state_context.current == STATE_ERROR) {
+        return false;
+    }
+    
+    // Transition to error state
+    return state_machine_transition(STATE_ERROR, CONDITION_ERROR);
+}
+
+bool state_machine_attempt_recovery(void) {
+    // Must be in error state
+    if (g_state_context.current != STATE_ERROR) {
+        return false;
+    }
+    
+    // Try to recover to previous state
+    if (transition_can_recover(&g_state_context)) {
+        return state_machine_transition(g_state_context.previous, CONDITION_RECOVERED);
+    }
+    
+    // Force reset to IDLE
+    return state_machine_transition(STATE_IDLE, CONDITION_RESET);
+}
+
 SystemState state_machine_get_current(void) {
-    return state_context_get()->current;
+    return g_state_context.current;
 }
 
 SystemState state_machine_get_previous(void) {
-    return state_context_get()->previous;
+    return g_state_context.previous;
 }
 
-uint32_t state_machine_get_time_in_state(void) {
-    return state_context_get_time_in_state();
+bool state_machine_is_in_error(void) {
+    return g_state_context.current == STATE_ERROR;
 }
 
-bool state_machine_is_valid_transition(SystemState from, SystemState to, StateCondition condition) {
-    return transition_is_valid(from, to, condition);
+// Debug support
+const char *state_to_string(SystemState state) {
+    switch (state) {
+        case STATE_HARDWARE_INIT:     return "HARDWARE_INIT";
+        case STATE_DISPLAY_INIT:      return "DISPLAY_INIT";
+        case STATE_IDLE:             return "IDLE";
+        case STATE_SYNCING:          return "SYNCING";
+        case STATE_READY:            return "READY";
+        case STATE_COMMAND_PROCESSING:return "COMMAND_PROCESSING";
+        case STATE_DATA_TRANSFER:    return "DATA_TRANSFER";
+        case STATE_ERROR:            return "ERROR";
+        default:                     return "UNKNOWN";
+    }
+}
+
+const char *condition_to_string(StateCondition condition) {
+    switch (condition) {
+        case CONDITION_NONE:           return "NONE";
+        case CONDITION_HARDWARE_READY: return "HARDWARE_READY";
+        case CONDITION_DISPLAY_READY:  return "DISPLAY_READY";
+        case CONDITION_SYNC_RECEIVED:  return "SYNC_RECEIVED";
+        case CONDITION_SYNC_VALID:     return "SYNC_VALID";
+        case CONDITION_COMMAND_VALID:  return "COMMAND_VALID";
+        case CONDITION_TRANSFER_START: return "TRANSFER_START";
+        case CONDITION_TRANSFER_COMPLETE: return "TRANSFER_COMPLETE";
+        case CONDITION_ERROR:          return "ERROR";
+        case CONDITION_RECOVERED:      return "RECOVERED";
+        case CONDITION_RESET:          return "RESET";
+        case CONDITION_RETRY:          return "RETRY";
+        default:                       return "UNKNOWN";
+    }
 }
 
 // State validation functions implementation
@@ -264,4 +318,17 @@ bool validate_transfer(void) {
     // Validate sequence numbers
     // Validate checksums
     return true; // TODO: Implement actual validation
+}
+
+bool state_machine_handle_recovery(const ErrorDetails *error) {
+    RecoveryStrategy strategy = recovery_get_strategy(error);
+    
+    char context[256];
+    snprintf(context, sizeof(context),
+             "Error: %s, Strategy: %s",
+             error->message,
+             recovery_strategy_to_string(strategy));
+    logging_write_with_context("StateMachine", "Recovery attempt", context);
+    
+    // ... recovery logic ...
 }

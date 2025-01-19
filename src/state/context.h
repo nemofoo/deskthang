@@ -1,41 +1,42 @@
 #ifndef DESKTHANG_STATE_CONTEXT_H
 #define DESKTHANG_STATE_CONTEXT_H
 
-#include "state.h"
 #include <stdint.h>
+#include <stdbool.h>
+#include "state.h"
 
-// State context information
+// State context structure
 typedef struct {
-    SystemState current;         // Current state
-    SystemState previous;        // Previous state
-    uint32_t transition_time;    // Time of last transition
-    uint32_t retry_count;        // Number of retries in current state
-    uint32_t error_count;        // Number of errors in current state
-    void *state_data;           // State-specific data
+    // Current state tracking
+    SystemState current;       // Current state
+    SystemState previous;      // Previous state
+    StateCondition last_condition; // Last transition condition
+    
+    // Timing
+    uint32_t entry_time;      // When we entered current state
+    uint32_t last_update;     // Last state update time
+    
+    // Error tracking
+    uint8_t retry_count;      // Number of retries in current state
+    bool can_retry;           // Whether retry is allowed
+    
+    // State-specific data
+    void *state_data;         // Optional state-specific context
 } StateContext;
 
-// Context management functions
-bool state_context_init(void);
-void state_context_reset(void);
-StateContext *state_context_get(void);
+// Context management
+void context_init(StateContext *ctx);
+void context_reset(StateContext *ctx);
+void context_update_timing(StateContext *ctx);
 
 // State data management
-bool state_context_set_data(void *data);
-void *state_context_get_data(void);
-void state_context_clear_data(void);
+void context_set_state_data(StateContext *ctx, void *data);
+void *context_get_state_data(StateContext *ctx);
+void context_clear_state_data(StateContext *ctx);
 
 // Retry management
-bool state_context_increment_retry(void);
-void state_context_reset_retry(void);
-uint32_t state_context_get_retry_count(void);
-
-// Error tracking
-void state_context_increment_error(void);
-void state_context_reset_error(void);
-uint32_t state_context_get_error_count(void);
-
-// Timing functions
-uint32_t state_context_get_time_in_state(void);
-void state_context_update_transition_time(void);
+bool context_can_retry(StateContext *ctx);
+void context_increment_retry(StateContext *ctx);
+void context_reset_retry(StateContext *ctx);
 
 #endif // DESKTHANG_STATE_CONTEXT_H
