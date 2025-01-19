@@ -117,16 +117,12 @@ fn getRetryDelay(attempt: u8) u64 {
     return @min(delay, Protocol.MAX_RETRY_DELAY_MS);
 }
 
-fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !Protocol.VersionResult {
+fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !bool {
     const stdout = std.io.getStdOut().writer();
     var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
     var current_state = Protocol.State.idle;
 
     try stdout.print("\nInitiating protocol sync...\n", .{});
-
-    // Enter version detection state
-    current_state = Protocol.State.version_detect;
-    try stdout.print("Detecting protocol version...\n", .{});
 
     // Clear any pending data
     while (true) {
@@ -138,14 +134,12 @@ fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !Protocol.VersionResul
         try logger.logReceived(buffer[0..bytes]);
     }
 
-    // Attempt modern protocol first
+    // Enter sync state
     current_state = Protocol.State.syncing;
     const sync_payload = [_]u8{Protocol.VERSION};
     const sync_header = PacketHeader.init(Protocol.PacketType.sync, 0, @intCast(sync_payload.len), Protocol.calculateCrc32(&sync_payload));
 
     var retry: u8 = 0;
-    var detected_version: u8 = Protocol.MIN_SUPPORTED_VERSION;
-
     while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
         if (retry > 0) {
             const delay = getRetryDelay(retry);
@@ -163,189 +157,88 @@ fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !Protocol.VersionResul
         };
 
         if (response.header.type == Protocol.PacketType.sync_ack) {
-            if (response.payload.len > 0) {
-                detected_version = response.payload[0];
-                // Attempt version negotiation
-                const negotiation = Protocol.negotiateVersion(detected_version) catch |err| {
-                    try stdout.print("\nVersion negotiation failed: {}\n", .{err});
-                    if (retry == Protocol.MAX_RETRIES - 1) {
-                        current_state = Protocol.State.error_state;
-                        return Protocol.Error.VersionNegotiationFailed;
-                    }
-                    continue;
-                };
-
-                if (negotiation.is_legacy) {
-                    current_state = Protocol.State.legacy_mode;
-                    try stdout.print("\nFalling back to legacy protocol\n", .{});
-                } else {
-                    current_state = Protocol.State.ready;
-                    try stdout.print("\nSync established (Protocol v{})\n", .{negotiation.version});
-                }
-                return negotiation;
-            }
+            current_state = Protocol.State.ready;
+            try stdout.print("\nSync established (Protocol v{})\n", .{Protocol.VERSION});
+            return true;
         }
     }
 
     current_state = Protocol.State.error_state;
     try stdout.print("\nSync failed after {} attempts\n", .{Protocol.MAX_RETRIES});
-    return Protocol.Error.VersionNegotiationFailed;
+    return false;
 }
 
 fn sendImageData(serial: std.fs.File, image_data: []const u8, logger: *SerialLogger) !void {
     const stdout = std.io.getStdOut().writer();
     var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
 
-    // Try protocol sync first
-    const version_result = try syncSerial(serial, logger);
-
-    if (!version_result.is_legacy) {
-        try stdout.print("Using protocol v{} for transfer\n", .{version_result.version});
-
-        // Send image command
-        const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{@intFromEnum(Protocol.Command.image)}));
-        try writePacket(serial, cmd_header, &[_]u8{@intFromEnum(Protocol.Command.image)}, logger);
-
-        // Wait for acknowledgment
-        _ = try readPacket(serial, &buffer, logger);
-
-        // Send data in chunks
-        var sequence: u8 = 0;
-        var total_sent: usize = 0;
-
-        while (total_sent < image_data.len) {
-            const chunk_size = @min(Protocol.CHUNK_SIZE, image_data.len - total_sent);
-            const chunk = image_data[total_sent .. total_sent + chunk_size];
-
-            const data_header = PacketHeader.init(Protocol.PacketType.data, sequence, @intCast(chunk_size), Protocol.calculateCrc32(chunk));
-
-            var retry: u8 = 0;
-            while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
-                if (retry > 0) {
-                    const delay = getRetryDelay(retry);
-                    try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
-                    std.time.sleep(delay * std.time.ns_per_ms);
-                }
-
-                try writePacket(serial, data_header, chunk, logger);
-
-                const response = readPacket(serial, &buffer, logger) catch |err| {
-                    try stdout.print("Transfer error: {}\n", .{err});
-                    continue;
-                };
-
-                switch (response.header.type) {
-                    .ack => break,
-                    .nack => {
-                        if (response.payload.len > 0) {
-                            try stdout.print("\nNACK received: {s}\n", .{response.payload});
-                        }
-                        continue;
-                    },
-                    else => continue,
-                }
-            }
-
-            if (retry >= Protocol.MAX_RETRIES) {
-                return error.TransferFailed;
-            }
-
-            total_sent += chunk_size;
-            sequence +%= 1;
-
-            const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
-            try stdout.print("\rProgress: {d:.1}% ({}/{} bytes)", .{ progress, total_sent, image_data.len });
-        }
-
-        // Send end marker
-        const end_header = PacketHeader.init(Protocol.PacketType.cmd, sequence, 1, Protocol.calculateCrc32(&[_]u8{@intFromEnum(Protocol.Command.end)}));
-        try writePacket(serial, end_header, &[_]u8{@intFromEnum(Protocol.Command.end)}, logger);
-
-        _ = try readPacket(serial, &buffer, logger);
-
-        try stdout.print("\nTransfer complete!\n", .{});
-    } else {
-        // Fall back to legacy protocol
-        try stdout.print("Using legacy protocol\n", .{});
-
-        // Send image command
-        const cmd = [_]u8{@intFromEnum(Protocol.Command.image)};
-        try serial.writeAll(&cmd);
-        try logger.logSent(&cmd);
-
-        // Wait for ACK
-        var response_buf: [1]u8 = undefined;
-        const bytes_read = try serial.read(&response_buf);
-        if (bytes_read == 0 or response_buf[0] != 'A') {
-            return error.NoAckReceived;
-        }
-        try logger.logReceived(response_buf[0..bytes_read]);
-
-        // Send image size
-        const size_bytes = writeIntBigEndian(@intCast(image_data.len));
-        try serial.writeAll(&size_bytes);
-        try logger.logSent(&size_bytes);
-
-        // Wait for ACK
-        const size_ack = try serial.read(&response_buf);
-        if (size_ack == 0 or response_buf[0] != 'A') {
-            return error.NoAckReceived;
-        }
-        try logger.logReceived(response_buf[0..size_ack]);
-
-        // Send data in chunks
-        var total_sent: usize = 0;
-        var chunk_counter: usize = 0;
-
-        while (total_sent < image_data.len) {
-            const chunk_size = @min(Protocol.CHUNK_SIZE, image_data.len - total_sent);
-            const chunk = image_data[total_sent .. total_sent + chunk_size];
-            chunk_counter += 1;
-
-            // Send chunk
-            try serial.writeAll(chunk);
-            try logger.logSent(chunk);
-
-            // Wait for ACK with retry
-            var retry: u8 = 0;
-            while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
-                if (retry > 0) {
-                    const delay = getRetryDelay(retry);
-                    try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
-                    std.time.sleep(delay * std.time.ns_per_ms);
-                }
-
-                const chunk_ack = try serial.read(&response_buf);
-                if (chunk_ack > 0 and response_buf[0] == 'A') {
-                    try logger.logReceived(response_buf[0..chunk_ack]);
-                    break;
-                }
-            }
-
-            if (retry >= Protocol.MAX_RETRIES) {
-                return error.TransferFailed;
-            }
-
-            total_sent += chunk_size;
-            const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
-            try stdout.print("\rProgress: {d:.1}% (Chunk {}/{}, {} bytes)", .{ progress, chunk_counter, (image_data.len + Protocol.CHUNK_SIZE - 1) / Protocol.CHUNK_SIZE, total_sent });
-        }
-        try stdout.writeByte('\n');
-
-        // Send end marker
-        const end_marker = [_]u8{@intFromEnum(Protocol.Command.end)};
-        try serial.writeAll(&end_marker);
-        try logger.logSent(&end_marker);
-
-        // Wait for final ACK
-        const end_ack = try serial.read(&response_buf);
-        if (end_ack == 0 or response_buf[0] != 'A') {
-            return error.NoAckReceived;
-        }
-        try logger.logReceived(response_buf[0..end_ack]);
-
-        try stdout.print("\nTransfer complete!\n", .{});
+    // Sync with device
+    if (!try syncSerial(serial, logger)) {
+        return error.SyncFailed;
     }
+
+    // Send image command
+    const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{@intFromEnum(Protocol.Command.image)}));
+    try writePacket(serial, cmd_header, &[_]u8{@intFromEnum(Protocol.Command.image)}, logger);
+
+    // Wait for acknowledgment
+    _ = try readPacket(serial, &buffer, logger);
+
+    // Send data in chunks
+    var sequence: u8 = 0;
+    var total_sent: usize = 0;
+
+    while (total_sent < image_data.len) {
+        const chunk_size = @min(Protocol.CHUNK_SIZE, image_data.len - total_sent);
+        const chunk = image_data[total_sent .. total_sent + chunk_size];
+
+        const data_header = PacketHeader.init(Protocol.PacketType.data, sequence, @intCast(chunk_size), Protocol.calculateCrc32(chunk));
+
+        var retry: u8 = 0;
+        while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
+            if (retry > 0) {
+                const delay = getRetryDelay(retry);
+                try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
+                std.time.sleep(delay * std.time.ns_per_ms);
+            }
+
+            try writePacket(serial, data_header, chunk, logger);
+
+            const response = readPacket(serial, &buffer, logger) catch |err| {
+                try stdout.print("Transfer error: {}\n", .{err});
+                continue;
+            };
+
+            switch (response.header.type) {
+                .ack => break,
+                .nack => {
+                    if (response.payload.len > 0) {
+                        try stdout.print("\nNACK received: {s}\n", .{response.payload});
+                    }
+                    continue;
+                },
+                else => continue,
+            }
+        }
+
+        if (retry >= Protocol.MAX_RETRIES) {
+            return error.TransferFailed;
+        }
+
+        total_sent += chunk_size;
+        sequence +%= 1;
+
+        const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
+        try stdout.print("\rProgress: {d:.1}% ({}/{} bytes)", .{ progress, total_sent, image_data.len });
+    }
+
+    // Send end marker
+    const end_header = PacketHeader.init(Protocol.PacketType.cmd, sequence, 1, Protocol.calculateCrc32(&[_]u8{@intFromEnum(Protocol.Command.end)}));
+    try writePacket(serial, end_header, &[_]u8{@intFromEnum(Protocol.Command.end)}, logger);
+
+    _ = try readPacket(serial, &buffer, logger);
+
+    try stdout.print("\nTransfer complete!\n", .{});
 }
 
 fn writeIntBigEndian(value: u32) [4]u8 {
@@ -552,39 +445,13 @@ pub fn main() !void {
                     },
                     '1'...'3' => {
                         var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
-                        const version_result = try syncSerial(s, &logger);
-
-                        if (!version_result.is_legacy) {
-                            try stdout.print("Using protocol v{} for pattern command\n", .{version_result.version});
-                            const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{choice[0]}));
-                            try writePacket(s, cmd_header, &[_]u8{choice[0]}, &logger);
-                            _ = try readPacket(s, &buffer, &logger);
-                        } else {
-                            try stdout.print("Using legacy protocol for pattern command\n", .{});
-                            try s.writeAll(&[_]u8{choice[0]});
-                            try logger.logSent(&[_]u8{choice[0]});
-
-                            // Wait for ACK with retry
-                            var retry: u8 = 0;
-                            var response_buf: [1]u8 = undefined;
-                            while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
-                                if (retry > 0) {
-                                    const delay = getRetryDelay(retry);
-                                    try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
-                                    std.time.sleep(delay * std.time.ns_per_ms);
-                                }
-
-                                const bytes_read = s.read(&response_buf) catch |err| switch (err) {
-                                    error.WouldBlock => continue,
-                                    else => return err,
-                                };
-
-                                if (bytes_read > 0 and response_buf[0] == 'A') {
-                                    try logger.logReceived(response_buf[0..bytes_read]);
-                                    break;
-                                }
-                            }
+                        if (!try syncSerial(s, &logger)) {
+                            try stdout.print("\nFailed to sync with device\n", .{});
+                            continue;
                         }
+                        const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{choice[0]}));
+                        try writePacket(s, cmd_header, &[_]u8{choice[0]}, &logger);
+                        _ = try readPacket(s, &buffer, &logger);
 
                         std.time.sleep(200 * std.time.ns_per_ms);
                     },
