@@ -25,56 +25,52 @@ cd host
 zig build
 ```
 
-## Communication Protocol
+## Communication Protocol (v1)
 
-The host and Pico communicate over USB serial (ttyACM0) using a simple protocol:
+The host and Pico communicate over USB serial using a robust packet-based protocol:
 
-```mermaid
-sequenceDiagram
-    participant Host as Host (Zig)
-    participant Main as Pico Main Loop
-    participant Handler as Image Handler
-    
-    Note over Host,Handler: Image Transfer Protocol
-    
-    Host->>Main: IMAGE_COMMAND ('I')
-    Note right of Main: Switch to blocking<br/>image receive mode
-    Main->>Handler: Call display_raw_image()
-    activate Handler
-    Handler-->>Host: ACK ('A')
-    
-    Host->>Handler: Image Size (4 bytes)
-    Note right of Host: Size = 115200 bytes<br/>(240x240x2 RGB565)
-    Handler-->>Host: ACK ('A')
-    
-    loop Until all data sent
-        Host->>Handler: Data Chunk (512 bytes)
-        Handler-->>Host: ACK ('A')
-    end
-    
-    Host->>Handler: END_MARKER ('E')
-    Handler-->>Host: ACK ('A')
-    deactivate Handler
-    
-    Note right of Handler: Return to main loop
-    Handler->>Main: Return
-    Main->>Main: Resume Pattern Switch
-```
+### Packet Structure
+- Header (8 bytes):
+  - Packet Type (1 byte)
+  - Sequence Number (1 byte)
+  - Length (2 bytes)
+  - CRC32 Checksum (4 bytes)
+- Payload (variable length, max 512 bytes)
 
-### Protocol Details:
-- Image data is sent in RGB565 format (2 bytes per pixel)
-- Display resolution is 240x240 pixels
-- Data is sent in 512-byte chunks
-- Each command/chunk requires acknowledgment ('A')
-- Timeout of 5000ms for each operation
-- Up to 3 retries per operation
+### Packet Types
+- `SYNC (0x1B)`: Synchronization request
+- `SYNC_ACK (0x1C)`: Synchronization acknowledgment
+- `CMD (0x1D)`: Command packet
+- `DATA (0x1E)`: Data packet
+- `ACK (0x1F)`: Acknowledgment
+- `NACK (0x20)`: Negative acknowledgment
 
-### Commands:
-- 'I': Start image transfer
-- 'E': End image transfer
-- '1': Show checkerboard pattern
-- '2': Show stripe pattern
-- '3': Show gradient pattern
+### Protocol Features
+- CRC32 error detection
+- Sequence numbering for packet ordering
+- Automatic retransmission on errors
+- Exponential backoff retry mechanism
+- Maximum 8 retries per packet
+- Base timeout of 1000ms
+- Retry delays between 50ms and 1000ms
+- Data chunks of 256 bytes
+
+### Commands
+- `I`: Start image transfer (RGB565 format, 240x240)
+- `E`: End image transfer
+- `1`: Show checkerboard pattern
+- `2`: Show stripe pattern
+- `3`: Show gradient pattern
+- `H`: Display help/command list
+
+### Error Handling
+The protocol handles various error conditions:
+- Invalid synchronization
+- Checksum mismatches
+- Sequence errors
+- Timeouts
+- Negative acknowledgments
+- Invalid packet types
 
 ## Hardware Setup
 - Screen: GC9A01 240x240 Round LCD

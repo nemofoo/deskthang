@@ -1,14 +1,20 @@
 const std = @import("std");
 const fs = std.fs;
+const Protocol = @import("protocol.zig").Protocol;
+const PacketHeader = @import("protocol.zig").PacketHeader;
 
 const c = @cImport({
     @cInclude("png.h");
+    @cInclude("fcntl.h");
+    @cInclude("unistd.h");
+    @cInclude("errno.h");
+    @cInclude("string.h");
 });
 
 const SerialLogger = struct {
     file: std.fs.File,
     mutex: std.Thread.Mutex,
-    
+
     pub fn init(path: []const u8) !SerialLogger {
         const file = try std.fs.cwd().createFile(path, .{ .truncate = false });
         return SerialLogger{
@@ -25,7 +31,7 @@ const SerialLogger = struct {
         const writer = self.file.writer();
         self.mutex.lock();
         defer self.mutex.unlock();
-        
+
         const timestamp = std.time.timestamp();
         try writer.print("[{d}] TX: ", .{timestamp});
         for (data) |byte| {
@@ -38,42 +44,294 @@ const SerialLogger = struct {
         const writer = self.file.writer();
         self.mutex.lock();
         defer self.mutex.unlock();
-        
+
         const timestamp = std.time.timestamp();
         try writer.print("[{d}] RX: ", .{timestamp});
+
+        // Always print ASCII representation, replacing non-printable chars with dots
+        try writer.print("\"", .{});
         for (data) |byte| {
-            try writer.print("{x:0>2} ", .{byte});
+            if (byte >= 32 and byte <= 126) {
+                try writer.writeByte(byte);
+            } else if (byte == '\n' or byte == '\r') {
+                try writer.print("\\{c}", .{byte});
+            } else {
+                try writer.writeByte('.');
+            }
         }
+        try writer.print("\"", .{});
+
+        // Also print hex values for reference
+        try writer.print(" (hex:", .{});
+        for (data) |byte| {
+            try writer.print(" {x:0>2}", .{byte});
+        }
+        try writer.print(")", .{});
         try writer.writeAll("\n");
     }
 };
 
-fn readWithTimeout(serial: std.fs.File, buffer: []u8, timeout_ms: u64, logger: *SerialLogger) !usize {
-    const start_time = std.time.milliTimestamp();
+// Protocol helper functions
+fn writePacket(serial: std.fs.File, header: PacketHeader, payload: ?[]const u8, logger: *SerialLogger) !void {
+    // Write header
+    var header_bytes: [@sizeOf(PacketHeader)]u8 = undefined;
+    @memcpy(&header_bytes, std.mem.asBytes(&header));
+    try serial.writeAll(&header_bytes);
+    try logger.logSent(&header_bytes);
 
-    while (true) {
-        const bytes_read = serial.read(buffer) catch |err| {
-            return err;
-        };
-
-        if (bytes_read > 0) {
-            try logger.logReceived(buffer[0..bytes_read]);
-            return bytes_read;
-        }
-
-        if (std.time.milliTimestamp() - start_time > timeout_ms) {
-            return error.Timeout;
-        }
-
-        std.time.sleep(1 * std.time.ns_per_ms);
+    // Write payload if present
+    if (payload) |data| {
+        try serial.writeAll(data);
+        try logger.logSent(data);
     }
 }
 
-const SerialProtocol = struct {
-    const TIMEOUT_MS: u64 = 10000;
-    const RETRY_COUNT: u8 = 3;
-    const CHUNK_SIZE: usize = 512;
-};
+fn readPacket(serial: std.fs.File, buffer: []u8, logger: *SerialLogger) !struct { header: PacketHeader, payload: []u8 } {
+    // Read header
+    var header_bytes: [@sizeOf(PacketHeader)]u8 = undefined;
+    const header_read = try serial.read(&header_bytes);
+    if (header_read != @sizeOf(PacketHeader)) return error.InvalidHeader;
+    try logger.logReceived(header_bytes[0..header_read]);
+
+    const header = @as(*const PacketHeader, @ptrCast(@alignCast(&header_bytes))).*;
+
+    // Read payload if present
+    var payload: []u8 = buffer[0..0];
+    if (header.length > 0) {
+        if (header.length > buffer.len) return error.BufferTooSmall;
+        const payload_read = try serial.read(buffer[0..header.length]);
+        if (payload_read != header.length) return error.InvalidPayload;
+        payload = buffer[0..payload_read];
+        try logger.logReceived(payload);
+
+        // Verify checksum
+        const calc_crc = Protocol.calculateCrc32(payload);
+        if (calc_crc != header.checksum) return error.InvalidChecksum;
+    }
+
+    return .{ .header = header, .payload = payload };
+}
+
+fn getRetryDelay(attempt: u8) u64 {
+    const delay = Protocol.MIN_RETRY_DELAY_MS * std.math.pow(u64, 2, attempt);
+    return @min(delay, Protocol.MAX_RETRY_DELAY_MS);
+}
+
+fn syncSerial(serial: std.fs.File, logger: *SerialLogger) !bool {
+    const stdout = std.io.getStdOut().writer();
+    var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
+
+    try stdout.print("\nInitiating protocol sync...\n", .{});
+
+    // Clear any pending data
+    while (true) {
+        const bytes = serial.read(&buffer) catch |err| switch (err) {
+            error.WouldBlock => break,
+            else => return err,
+        };
+        if (bytes == 0) break;
+        try logger.logReceived(buffer[0..bytes]);
+    }
+
+    // Send sync packet with version info
+    const sync_payload = [_]u8{Protocol.VERSION};
+    const sync_header = PacketHeader.init(Protocol.PacketType.sync, 0, @intCast(sync_payload.len), Protocol.calculateCrc32(&sync_payload));
+
+    var retry: u8 = 0;
+    while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
+        if (retry > 0) {
+            const delay = getRetryDelay(retry);
+            try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
+            std.time.sleep(delay * std.time.ns_per_ms);
+        }
+
+        // Send sync packet
+        try writePacket(serial, sync_header, &sync_payload, logger);
+
+        // Wait for sync acknowledgment
+        const response = readPacket(serial, &buffer, logger) catch |err| {
+            try stdout.print("Sync error: {}\n", .{err});
+            continue;
+        };
+
+        if (response.header.type == Protocol.PacketType.sync_ack) {
+            if (response.payload.len > 0 and response.payload[0] == Protocol.VERSION) {
+                try stdout.print("\nSync established (Protocol v{})\n", .{Protocol.VERSION});
+                return true;
+            }
+            try stdout.print("\nWarning: Protocol version mismatch (got v{}, expected v{})\n", .{ response.payload[0], Protocol.VERSION });
+            return false;
+        }
+    }
+
+    try stdout.print("\nSync failed after {} attempts\n", .{Protocol.MAX_RETRIES});
+    return false;
+}
+
+fn sendImageData(serial: std.fs.File, image_data: []const u8, logger: *SerialLogger) !void {
+    const stdout = std.io.getStdOut().writer();
+    var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
+
+    // Try protocol sync first
+    const new_protocol = try syncSerial(serial, logger);
+
+    if (new_protocol) {
+        try stdout.print("Using protocol v{} for transfer\n", .{Protocol.VERSION});
+
+        // Send image command
+        const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{@intFromEnum(Protocol.Command.image)}));
+        try writePacket(serial, cmd_header, &[_]u8{@intFromEnum(Protocol.Command.image)}, logger);
+
+        // Wait for acknowledgment
+        _ = try readPacket(serial, &buffer, logger);
+
+        // Send data in chunks
+        var sequence: u8 = 0;
+        var total_sent: usize = 0;
+
+        while (total_sent < image_data.len) {
+            const chunk_size = @min(Protocol.CHUNK_SIZE, image_data.len - total_sent);
+            const chunk = image_data[total_sent .. total_sent + chunk_size];
+
+            const data_header = PacketHeader.init(Protocol.PacketType.data, sequence, @intCast(chunk_size), Protocol.calculateCrc32(chunk));
+
+            var retry: u8 = 0;
+            while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
+                if (retry > 0) {
+                    const delay = getRetryDelay(retry);
+                    try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
+                    std.time.sleep(delay * std.time.ns_per_ms);
+                }
+
+                try writePacket(serial, data_header, chunk, logger);
+
+                const response = readPacket(serial, &buffer, logger) catch |err| {
+                    try stdout.print("Transfer error: {}\n", .{err});
+                    continue;
+                };
+
+                switch (response.header.type) {
+                    .ack => break,
+                    .nack => {
+                        if (response.payload.len > 0) {
+                            try stdout.print("\nNACK received: {s}\n", .{response.payload});
+                        }
+                        continue;
+                    },
+                    else => continue,
+                }
+            }
+
+            if (retry >= Protocol.MAX_RETRIES) {
+                return error.TransferFailed;
+            }
+
+            total_sent += chunk_size;
+            sequence +%= 1;
+
+            const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
+            try stdout.print("\rProgress: {d:.1}% ({}/{} bytes)", .{ progress, total_sent, image_data.len });
+        }
+
+        // Send end marker
+        const end_header = PacketHeader.init(Protocol.PacketType.cmd, sequence, 1, Protocol.calculateCrc32(&[_]u8{@intFromEnum(Protocol.Command.end)}));
+        try writePacket(serial, end_header, &[_]u8{@intFromEnum(Protocol.Command.end)}, logger);
+
+        _ = try readPacket(serial, &buffer, logger);
+
+        try stdout.print("\nTransfer complete!\n", .{});
+    } else {
+        // Fall back to legacy protocol
+        try stdout.print("Using legacy protocol\n", .{});
+
+        // Send image command
+        const cmd = [_]u8{@intFromEnum(Protocol.Command.image)};
+        try serial.writeAll(&cmd);
+        try logger.logSent(&cmd);
+
+        // Wait for ACK
+        var response_buf: [1]u8 = undefined;
+        const bytes_read = try serial.read(&response_buf);
+        if (bytes_read == 0 or response_buf[0] != 'A') {
+            return error.NoAckReceived;
+        }
+        try logger.logReceived(response_buf[0..bytes_read]);
+
+        // Send image size
+        const size_bytes = writeIntBigEndian(@intCast(image_data.len));
+        try serial.writeAll(&size_bytes);
+        try logger.logSent(&size_bytes);
+
+        // Wait for ACK
+        const size_ack = try serial.read(&response_buf);
+        if (size_ack == 0 or response_buf[0] != 'A') {
+            return error.NoAckReceived;
+        }
+        try logger.logReceived(response_buf[0..size_ack]);
+
+        // Send data in chunks
+        var total_sent: usize = 0;
+        var chunk_counter: usize = 0;
+
+        while (total_sent < image_data.len) {
+            const chunk_size = @min(Protocol.CHUNK_SIZE, image_data.len - total_sent);
+            const chunk = image_data[total_sent .. total_sent + chunk_size];
+            chunk_counter += 1;
+
+            // Send chunk
+            try serial.writeAll(chunk);
+            try logger.logSent(chunk);
+
+            // Wait for ACK with retry
+            var retry: u8 = 0;
+            while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
+                if (retry > 0) {
+                    const delay = getRetryDelay(retry);
+                    try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
+                    std.time.sleep(delay * std.time.ns_per_ms);
+                }
+
+                const chunk_ack = try serial.read(&response_buf);
+                if (chunk_ack > 0 and response_buf[0] == 'A') {
+                    try logger.logReceived(response_buf[0..chunk_ack]);
+                    break;
+                }
+            }
+
+            if (retry >= Protocol.MAX_RETRIES) {
+                return error.TransferFailed;
+            }
+
+            total_sent += chunk_size;
+            const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
+            try stdout.print("\rProgress: {d:.1}% (Chunk {}/{}, {} bytes)", .{ progress, chunk_counter, (image_data.len + Protocol.CHUNK_SIZE - 1) / Protocol.CHUNK_SIZE, total_sent });
+        }
+        try stdout.writeByte('\n');
+
+        // Send end marker
+        const end_marker = [_]u8{@intFromEnum(Protocol.Command.end)};
+        try serial.writeAll(&end_marker);
+        try logger.logSent(&end_marker);
+
+        // Wait for final ACK
+        const end_ack = try serial.read(&response_buf);
+        if (end_ack == 0 or response_buf[0] != 'A') {
+            return error.NoAckReceived;
+        }
+        try logger.logReceived(response_buf[0..end_ack]);
+
+        try stdout.print("\nTransfer complete!\n", .{});
+    }
+}
+
+fn writeIntBigEndian(value: u32) [4]u8 {
+    return [4]u8{
+        @truncate((value >> 24) & 0xFF),
+        @truncate((value >> 16) & 0xFF),
+        @truncate((value >> 8) & 0xFF),
+        @truncate(value & 0xFF),
+    };
+}
 
 const ImageSize = struct {
     const width: usize = 240;
@@ -81,14 +339,6 @@ const ImageSize = struct {
     const pixels: usize = width * height;
     const bytes_per_pixel: usize = 2; // RGB565
     const total_bytes: usize = pixels * bytes_per_pixel;
-};
-
-const ReadFn = struct {
-    stream: *std.fs.File.Reader,
-    pub fn read(png_ptr: *c.png_struct, data: [*c]u8, size: usize) callconv(.C) void {
-        const self = @as(*ReadFn, @ptrCast(c.png_get_progressive_ptr(png_ptr)));
-        _ = self.stream.readAll(data[0..size]) catch {};
-    }
 };
 
 const ReadContext = struct {
@@ -213,25 +463,53 @@ pub fn main() !void {
     var logger = try SerialLogger.init("serial.log");
     defer logger.deinit();
 
+    try stdout.print("Opening serial port...\n", .{});
     const serial = blk: {
         const file = fs.openFileAbsolute("/dev/ttyACM0", .{ .mode = .read_write }) catch |err| {
-            try stdout.print("Warning: Could not open serial port: {}\n", .{err});
+            try stdout.print("Error: Could not open serial port: {}\n", .{err});
+            try stdout.print("Troubleshooting tips:\n", .{});
+            try stdout.print("1. Make sure the device is connected\n", .{});
+            try stdout.print("2. Check if the device shows up in 'lsusb'\n", .{});
+            try stdout.print("3. Verify you have permission to access /dev/ttyACM0\n", .{});
+            try stdout.print("4. Try unplugging and replugging the device\n", .{});
             break :blk null;
         };
+
+        try stdout.print("Configuring serial port...\n", .{});
+
+        // Configure serial port for non-blocking I/O
+        const flags = c.fcntl(@as(c_int, @intCast(file.handle)), c.F_GETFL, @as(c_int, 0));
+        if (flags < 0) {
+            try stdout.print("Error getting file flags: {s}\n", .{"Permission Denied"});
+            file.close();
+            break :blk null;
+        }
+
+        const result = c.fcntl(@as(c_int, @intCast(file.handle)), c.F_SETFL, @as(c_int, flags | c.O_NONBLOCK));
+        if (result < 0) {
+            try stdout.print("Error setting non-blocking mode: {s}\n", .{"Permission Denied"});
+            file.close();
+            break :blk null;
+        }
+
+        try stdout.print("Serial port ready\n", .{});
         break :blk file;
     };
     defer if (serial) |s| s.close();
 
+    // Give device time to initialize
+    try stdout.print("Waiting for device to initialize...\n", .{});
+    std.time.sleep(2000 * std.time.ns_per_ms);
+
+    // Show initial help
+    try stdout.print("Commands:\n", .{});
+    try stdout.print("1-3 : Show test patterns\n", .{});
+    try stdout.print("4   : Upload and display image (240x240 RGB565)\n", .{});
+    try stdout.print("5   : Exit program\n", .{});
+    try stdout.print("{c}   : Show this help message\n\n", .{@intFromEnum(Protocol.Command.help)});
+
     while (true) {
-        try stdout.writeAll(
-            \\Select:
-            \\1. Checkerboard
-            \\2. Stripes
-            \\3. Gradient
-            \\4. Image
-            \\5. Exit
-            \\Choice: 
-        );
+        try stdout.writeAll("Choice: ");
 
         var buf: [256]u8 = undefined;
         if (try std.io.getStdIn().reader().readUntilDelimiterOrEof(&buf, '\n')) |user_input| {
@@ -240,129 +518,69 @@ pub fn main() !void {
 
             if (serial) |s| {
                 switch (choice[0]) {
+                    @intFromEnum(Protocol.Command.help) => {
+                        try stdout.print("\nAvailable Commands:\n", .{});
+                        try stdout.print("------------------\n", .{});
+                        try stdout.print("1-3 : Show test patterns\n", .{});
+                        try stdout.print("4   : Upload and display image (240x240 RGB565)\n", .{});
+                        try stdout.print("5   : Exit program\n", .{});
+                        try stdout.print("{c}   : Show this help message\n\n", .{@intFromEnum(Protocol.Command.help)});
+                    },
                     '1'...'3' => {
-                        const cmd = [_]u8{choice[0]};
-                        try s.writeAll(&cmd);
-                        try logger.logSent(&cmd);
+                        var buffer: [Protocol.MAX_PACKET_SIZE]u8 = undefined;
+                        const new_protocol = try syncSerial(s, &logger);
+
+                        if (new_protocol) {
+                            const cmd_header = PacketHeader.init(Protocol.PacketType.cmd, 0, 1, Protocol.calculateCrc32(&[_]u8{choice[0]}));
+                            try writePacket(s, cmd_header, &[_]u8{choice[0]}, &logger);
+                            _ = try readPacket(s, &buffer, &logger);
+                        } else {
+                            try s.writeAll(&[_]u8{choice[0]});
+                            try logger.logSent(&[_]u8{choice[0]});
+                            var response_buf: [1]u8 = undefined;
+                            _ = try s.read(&response_buf);
+                        }
+
+                        std.time.sleep(200 * std.time.ns_per_ms);
                     },
                     '4' => {
-                        try stdout.writeAll("Enter image path: ");
-                        if (try std.io.getStdIn().reader().readUntilDelimiterOrEof(&buf, '\n')) |path| {
-                            const trimmed_path = std.mem.trim(u8, path, " \t\r\n");
+                        try stdout.print("Loading image from host/240.png...\n", .{});
+                        const rgb888_data = decodePNG(allocator, "host/240.png") catch |err| {
+                            switch (err) {
+                                error.InvalidImageDimensions => {
+                                    try stdout.print("Error: Invalid image dimensions\n", .{});
+                                    try stdout.print("Required: 240x240 pixels\n", .{});
+                                },
+                                error.UnexpectedImageFormat => {
+                                    try stdout.print("Error: Unexpected image format\n", .{});
+                                    try stdout.print("Required: RGB format\n", .{});
+                                },
+                                error.FileNotFound => {
+                                    try stdout.print("Error: File not found: host/240.png\n", .{});
+                                },
+                                else => {
+                                    try stdout.print("Error decoding PNG: {}\n", .{err});
+                                },
+                            }
+                            continue;
+                        };
+                        defer allocator.free(rgb888_data);
 
-                            const rgb888_data = decodePNG(allocator, trimmed_path) catch |err| {
-                                switch (err) {
-                                    error.InvalidImageDimensions => try stdout.print("Error: Image must be {}x{} pixels\n", .{ ImageSize.width, ImageSize.height }),
-                                    error.UnexpectedImageFormat => try stdout.print("Error: Image must be in RGB format\n", .{}),
-                                    error.FileNotFound => try stdout.print("Error: File not found: {s}\n", .{trimmed_path}),
-                                    else => try stdout.print("Error decoding PNG: {}\n", .{err}),
-                                }
-                                continue;
-                            };
-                            defer allocator.free(rgb888_data);
+                        try stdout.print("Converting to RGB565 format...\n", .{});
+                        const rgb565_data = try convertToRGB565(allocator, rgb888_data, 240, 240);
+                        defer allocator.free(rgb565_data);
 
-                            const rgb565_data = try convertToRGB565(allocator, rgb888_data, ImageSize.width, ImageSize.height);
-                            defer allocator.free(rgb565_data);
-
-                            try sendImageData(s, rgb565_data, &logger);
-                        }
+                        try sendImageData(s, rgb565_data, &logger);
                     },
                     '5' => std.process.exit(0),
-                    else => try stdout.writeAll("Invalid choice. Try again.\n"),
+                    else => {
+                        try stdout.print("Invalid choice: {c}\n", .{choice[0]});
+                        try stdout.print("Send {c} for help\n", .{@intFromEnum(Protocol.Command.help)});
+                    },
                 }
             } else {
                 try stdout.writeAll("Serial port not connected. Cannot send commands.\n");
             }
         }
     }
-}
-
-const ImageProtocol = struct {
-    const END_MARKER: u8 = 'E';
-    const IMAGE_COMMAND: u8 = 'I';
-    const ACK: u8 = 'A';
-    const CHUNK_SIZE: usize = 512;
-};
-
-fn writeIntBigEndian(value: u32) [4]u8 {
-    return [4]u8{
-        @truncate((value >> 24) & 0xFF),
-        @truncate((value >> 16) & 0xFF),
-        @truncate((value >> 8) & 0xFF),
-        @truncate(value & 0xFF),
-    };
-}
-
-fn sendImageData(serial: std.fs.File, image_data: []const u8, logger: *SerialLogger) !void {
-    const stdout = std.io.getStdOut().writer();
-
-    try stdout.print("Starting image transmission...\n", .{});
-
-    // Send IMAGE_COMMAND and wait for ACK
-    const cmd = [_]u8{'I'};
-    try serial.writeAll(&cmd);
-    try logger.logSent(&cmd);
-    std.time.sleep(10 * std.time.ns_per_ms);
-
-    var response_buf: [1]u8 = undefined;
-    try waitForAck(serial, &response_buf, SerialProtocol.RETRY_COUNT, logger);
-
-    // Send image size
-    const size_bytes = writeIntBigEndian(@intCast(image_data.len));
-    try serial.writeAll(&size_bytes);
-    try logger.logSent(&size_bytes);
-    std.time.sleep(10 * std.time.ns_per_ms);
-
-    try waitForAck(serial, &response_buf, SerialProtocol.RETRY_COUNT, logger);
-
-    // Send data in chunks
-    var total_sent: usize = 0;
-    var chunk_counter: usize = 0;
-
-    while (total_sent < image_data.len) {
-        const chunk_size = @min(SerialProtocol.CHUNK_SIZE, image_data.len - total_sent);
-        const chunk = image_data[total_sent .. total_sent + chunk_size];
-        chunk_counter += 1;
-
-        try serial.writeAll(chunk);
-        try logger.logSent(chunk);
-        std.time.sleep(10 * std.time.ns_per_ms);
-
-        try waitForAck(serial, &response_buf, SerialProtocol.RETRY_COUNT, logger);
-
-        total_sent += chunk.len;
-        const progress = @as(f32, @floatFromInt(total_sent)) / @as(f32, @floatFromInt(image_data.len)) * 100.0;
-        try stdout.print("\rProgress: {d:.1}% (Chunk {}, {} bytes sent)", .{ progress, chunk_counter, total_sent });
-    }
-    try stdout.writeByte('\n');
-
-    // Send END_MARKER
-    const end_marker = [_]u8{'E'};
-    try serial.writeAll(&end_marker);
-    try logger.logSent(&end_marker);
-    std.time.sleep(10 * std.time.ns_per_ms);
-
-    try waitForAck(serial, &response_buf, SerialProtocol.RETRY_COUNT, logger);
-
-    try stdout.writeAll("\nImage sent successfully!\n");
-}
-
-fn waitForAck(serial: std.fs.File, response_buf: []u8, retry_count: u8, logger: *SerialLogger) !void {
-    var tries: u8 = 0;
-
-    while (tries < retry_count) : (tries += 1) {
-        const bytes = try readWithTimeout(serial, response_buf, SerialProtocol.TIMEOUT_MS, logger);
-
-        if (bytes == 0) {
-            continue;
-        }
-
-        if (response_buf[0] == 'A') {
-            return;
-        }
-
-        tries += 1;
-    }
-
-    return error.NoAckReceived;
 }
