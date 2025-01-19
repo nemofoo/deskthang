@@ -537,8 +537,27 @@ pub fn main() !void {
                         } else {
                             try s.writeAll(&[_]u8{choice[0]});
                             try logger.logSent(&[_]u8{choice[0]});
+
+                            // Wait for ACK with retry
+                            var retry: u8 = 0;
                             var response_buf: [1]u8 = undefined;
-                            _ = try s.read(&response_buf);
+                            while (retry < Protocol.MAX_RETRIES) : (retry += 1) {
+                                if (retry > 0) {
+                                    const delay = getRetryDelay(retry);
+                                    try stdout.print("\rRetry {}/{}: Waiting {}ms...", .{ retry + 1, Protocol.MAX_RETRIES, delay });
+                                    std.time.sleep(delay * std.time.ns_per_ms);
+                                }
+
+                                const bytes_read = s.read(&response_buf) catch |err| switch (err) {
+                                    error.WouldBlock => continue,
+                                    else => return err,
+                                };
+
+                                if (bytes_read > 0 and response_buf[0] == 'A') {
+                                    try logger.logReceived(response_buf[0..bytes_read]);
+                                    break;
+                                }
+                            }
                         }
 
                         std.time.sleep(200 * std.time.ns_per_ms);

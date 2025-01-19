@@ -25,7 +25,7 @@ cd host
 zig build
 ```
 
-## Communication Protocol (v1)
+## communication protocol (v1)
 
 The host and Pico communicate over USB serial using a robust packet-based protocol:
 

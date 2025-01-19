@@ -97,16 +97,26 @@ bool read_exact(uint8_t *buffer, size_t n, uint32_t timeout_us) {
     size_t received = 0;
     absolute_time_t timeout = make_timeout_time_us(timeout_us);
 
+    printf("Reading %d bytes...\n", n);
+    fflush(stdout);
+
     while (received < n) {
-        int c = getchar_timeout_us(1000); // Short timeout for polling
+        int c = getchar_timeout_us(10000); // Longer polling timeout (10ms)
         if (c == PICO_ERROR_TIMEOUT) {
             if (absolute_time_diff_us(get_absolute_time(), timeout) < 0) {
-                return false; // Global timeout
+                printf("Global timeout after %d/%d bytes\n", received, n);
+                fflush(stdout);
+                return false;
             }
-            continue; // Keep trying
+            continue;
         }
         buffer[received++] = (uint8_t)c;
+        printf("Got byte %d/%d: 0x%02X\n", received, n, (uint8_t)c);
+        fflush(stdout);
     }
+    
+    printf("Successfully read %d bytes\n", n);
+    fflush(stdout);
     return true;
 }
 
@@ -121,13 +131,19 @@ bool write_all(const uint8_t *data, size_t length) {
 
 // Read a complete packet
 bool read_packet(struct packet_header *header, uint8_t *payload, size_t max_payload) {
+    printf("Attempting to read packet...\n");
+    fflush(stdout);
+
     // Read header
     if (!read_exact((uint8_t*)header, sizeof(*header), SERIAL_TIMEOUT_US)) {
+        printf("Failed to read packet header\n");
+        fflush(stdout);
         return false;
     }
 
-    // Convert length from network byte order
-    header->length = (header->length >> 8) | (header->length << 8);
+    printf("Got packet: type=0x%02X, seq=%d, len=%d\n", 
+           header->type, header->sequence, header->length);
+    fflush(stdout);
 
     // Validate length
     if (header->length > max_payload) {
@@ -155,7 +171,7 @@ bool write_packet(uint8_t type, uint8_t sequence, const uint8_t *payload, uint16
     struct packet_header header = {
         .type = type,
         .sequence = sequence,
-        .length = (length >> 8) | (length << 8), // Network byte order
+        .length = length,
         .checksum = calculate_crc32(payload, length)
     };
 
@@ -266,105 +282,53 @@ void display_raw_image(void) {
     size_t total_received = 0;
     uint8_t expected_sequence = 0;
     
-    // Try detecting protocol version
-    bool new_protocol = detect_protocol_version();
+    // Prepare display
+    GC9A01_set_data_command(1);
+    GC9A01_set_chip_select(0);
     
-    if (new_protocol) {
-        printf("Using protocol v%d\n", PROTOCOL_VERSION);
-        
-        // Prepare display
-        GC9A01_set_data_command(1);
-        GC9A01_set_chip_select(0);
-        
-        struct packet_header header;
-        bool transfer_complete = false;
-        
-        while (!transfer_complete) {
-            if (!read_packet(&header, buffer, sizeof(buffer))) {
-                printf("Error: Failed to read packet\n");
-                send_nack(expected_sequence, "Read error");
-                continue;
-            }
-            
-            switch (header.type) {
-                case PKT_DATA:
-                    if (header.sequence != expected_sequence) {
-                        printf("Error: Out of sequence packet (got %d, expected %d)\n", 
-                               header.sequence, expected_sequence);
-                        send_nack(header.sequence, "Bad sequence");
-                        continue;
-                    }
-                    
-                    // Process chunk
-                    GC9A01_spi_tx(buffer, header.length);
-                    total_received += header.length;
-                    
-                    // Acknowledge
-                    send_ack(expected_sequence);
-                    expected_sequence++;
-                    
-                    // Progress
-                    printf("Progress: %d/%d bytes (%.1f%%)\n", 
-                           total_received, IMAGE_SIZE,
-                           (float)total_received * 100.0f / IMAGE_SIZE);
-                    break;
-                    
-                case PKT_CMD:
-                    if (header.length == 1 && buffer[0] == CMD_END) {
-                        transfer_complete = true;
-                        send_ack(header.sequence);
-                    }
-                    break;
-                    
-                default:
-                    send_nack(header.sequence, "Invalid packet type");
-                    break;
-            }
+    struct packet_header header;
+    bool transfer_complete = false;
+    
+    while (!transfer_complete) {
+        if (!read_packet(&header, buffer, sizeof(buffer))) {
+            printf("Error: Failed to read packet\n");
+            send_nack(expected_sequence, "Read error");
+            continue;
         }
         
-    } else {
-        // Legacy protocol implementation
-        int cmd = getchar_timeout_us(SERIAL_TIMEOUT_US);
-        if (cmd == PICO_ERROR_TIMEOUT || cmd != IMAGE_CMD) {
-            printf("Error: Invalid command\n");
-            return;
-        }
-        putchar(ACK_CHAR);
-        fflush(stdout);
-        
-        uint32_t image_size = 0;
-        for (int i = 0; i < 4; i++) {
-            int b = getchar_timeout_us(SERIAL_TIMEOUT_US);
-            if (b == PICO_ERROR_TIMEOUT) return;
-            image_size = (image_size << 8) | b;
-        }
-        
-        if (image_size != IMAGE_SIZE) {
-            printf("Error: Wrong size\n");
-            return;
-        }
-        putchar(ACK_CHAR);
-        fflush(stdout);
-        
-        GC9A01_set_data_command(1);
-        GC9A01_set_chip_select(0);
-        
-        while (total_received < image_size) {
-            int bytes_read = 0;
-            while (bytes_read < CHUNK_SIZE && total_received + bytes_read < image_size) {
-                int c = getchar_timeout_us(SERIAL_TIMEOUT_US);
-                if (c == PICO_ERROR_TIMEOUT) return;
-                buffer[bytes_read++] = (uint8_t)c;
-            }
-            
-            if (bytes_read > 0) {
-                GC9A01_spi_tx(buffer, bytes_read);
-                total_received += bytes_read;
-                sleep_ms(SERIAL_DELAY_MS);
-                putchar(ACK_CHAR);
-                fflush(stdout);
-                printf("%d/%d\n", total_received, image_size);
-            }
+        switch (header.type) {
+            case PKT_DATA:
+                if (header.sequence != expected_sequence) {
+                    printf("Error: Out of sequence packet (got %d, expected %d)\n", 
+                           header.sequence, expected_sequence);
+                    send_nack(header.sequence, "Bad sequence");
+                    continue;
+                }
+                
+                // Process chunk
+                GC9A01_spi_tx(buffer, header.length);
+                total_received += header.length;
+                
+                // Acknowledge
+                send_ack(expected_sequence);
+                expected_sequence++;
+                
+                // Progress
+                printf("Progress: %d/%d bytes (%.1f%%)\n", 
+                       total_received, IMAGE_SIZE,
+                       (float)total_received * 100.0f / IMAGE_SIZE);
+                break;
+                
+            case PKT_CMD:
+                if (header.length == 1 && buffer[0] == CMD_END) {
+                    transfer_complete = true;
+                    send_ack(header.sequence);
+                }
+                break;
+                
+            default:
+                send_nack(header.sequence, "Invalid packet type");
+                break;
         }
     }
     
@@ -513,6 +477,18 @@ void set_display_pattern(char pattern) {
     }
 }
 
+// Handle a complete packet-based command
+void handle_packet_command(uint8_t sequence, const uint8_t *payload, uint16_t length) {
+    if (length != 1) {
+        send_nack(sequence, "Invalid command length");
+        return;
+    }
+
+    char cmd = payload[0];
+    set_display_pattern(cmd);
+    send_ack(sequence);
+}
+
 int main() {
     stdio_init_all();
     sleep_ms(2000);
@@ -520,13 +496,57 @@ int main() {
     display_init();
     test_pattern_checkerboard();
     
+    struct packet_header header;
+    uint8_t buffer[BUFFER_SIZE];
+    bool using_packet_protocol = false;
+
     while(1) {
-        int c = getchar_timeout_us(100000);
-        if (c != PICO_ERROR_TIMEOUT && c >= 32 && c <= 126) {
-            putchar(ACK_CHAR);
-            fflush(stdout);
-            if (c == HELP_CMD) print_help();
-            else set_display_pattern((char)c);
+        // Try reading as packet protocol first
+        if (!using_packet_protocol) {
+            using_packet_protocol = detect_protocol_version();
+        }
+
+        if (using_packet_protocol) {
+            // Packet protocol mode
+            if (read_packet(&header, buffer, sizeof(buffer))) {
+                switch (header.type) {
+                    case PKT_SYNC:
+                        // Got a sync packet in the middle? Acknowledge again if needed
+                        write_packet(PKT_SYNCACK, header.sequence, buffer, header.length);
+                        break;
+                    case PKT_CMD:
+                        handle_packet_command(header.sequence, buffer, header.length);
+                        break;
+                    case PKT_DATA:
+                        // If you send data packets for images or something else
+                        // (Similar to display_raw_image's logic)
+                        send_nack(header.sequence, "Data packets only valid during image transfer");
+                        break;
+                    default:
+                        send_nack(header.sequence, "Invalid packet type");
+                        break;
+                }
+            }
+        } else {
+            // Legacy single-byte protocol
+            int c = getchar_timeout_us(100000);
+            if (c != PICO_ERROR_TIMEOUT && c >= 32 && c <= 126) {
+                // Immediately acknowledge receipt
+                putchar(ACK_CHAR);
+                fflush(stdout);
+                
+                // Then handle the command
+                if (c == HELP_CMD) {
+                    print_help();
+                } else {
+                    set_display_pattern((char)c);
+                }
+                
+                // Clear any pending input
+                while (getchar_timeout_us(1000) != PICO_ERROR_TIMEOUT) {
+                    // Discard extra bytes
+                }
+            }
         }
     }
 }
