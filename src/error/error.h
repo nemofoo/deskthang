@@ -3,16 +3,31 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "../protocol/protocol_constants.h"
 
 // Error types as defined in protocol_architecture.md
+// Error code ranges as defined in protocol_architecture.md
+#define ERROR_CODE_HARDWARE_START 1000
+#define ERROR_CODE_HARDWARE_END   1999
+#define ERROR_CODE_PROTOCOL_START 2000
+#define ERROR_CODE_PROTOCOL_END   2999
+#define ERROR_CODE_STATE_START    3000
+#define ERROR_CODE_STATE_END      3999
+#define ERROR_CODE_COMMAND_START  4000
+#define ERROR_CODE_COMMAND_END    4999
+#define ERROR_CODE_TRANSFER_START 5000
+#define ERROR_CODE_TRANSFER_END   5999
+#define ERROR_CODE_SYSTEM_START   6000
+#define ERROR_CODE_SYSTEM_END     6999
+
 typedef enum {
     ERROR_TYPE_NONE = 0,
-    ERROR_TYPE_HARDWARE,    // 1000-1999: Hardware interface errors
-    ERROR_TYPE_PROTOCOL,    // 2000-2999: Protocol handling errors  
-    ERROR_TYPE_STATE,       // 3000-3999: State machine errors
-    ERROR_TYPE_COMMAND,     // 4000-4999: Command processing errors
-    ERROR_TYPE_TRANSFER,    // 5000-5999: Data transfer errors
-    ERROR_TYPE_SYSTEM       // 6000-6999: System level errors
+    ERROR_TYPE_HARDWARE = ERROR_CODE_HARDWARE_START,
+    ERROR_TYPE_PROTOCOL = ERROR_CODE_PROTOCOL_START,
+    ERROR_TYPE_STATE = ERROR_CODE_STATE_START,
+    ERROR_TYPE_COMMAND = ERROR_CODE_COMMAND_START,
+    ERROR_TYPE_TRANSFER = ERROR_CODE_TRANSFER_START,
+    ERROR_TYPE_SYSTEM = ERROR_CODE_SYSTEM_START
 } ErrorType;
 
 typedef enum {
@@ -30,8 +45,8 @@ typedef struct {
     uint32_t code;          // Error code
     uint32_t timestamp;     // When error occurred
     SystemState source_state; // State when error occurred
-    char message[128];      // Error message
-    char context[256];      // Additional context
+    char message[MAX_PACKET_SIZE/4];    // Error message (128 bytes)
+    char context[MAX_PACKET_SIZE/2];    // Additional context (256 bytes)
     bool recoverable;       // Can be recovered from
     uint8_t retry_count;    // Current retry count
     uint32_t backoff_ms;    // Current backoff delay

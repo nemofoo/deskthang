@@ -185,7 +185,7 @@ uint32_t transfer_get_estimated_time_remaining(void) {
 
 // Validation
 bool transfer_validate_chunk(const Packet *packet) {
-    if (!packet || packet_get_type(packet) != PACKET_DATA) {
+    if (!packet || packet_get_type(packet) != PACKET_TYPE_DATA) {
         return false;
     }
     

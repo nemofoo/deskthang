@@ -59,16 +59,16 @@ bool packet_create(Packet *packet, PacketType type, const uint8_t *payload, uint
 // Create specific packet types
 bool packet_create_sync(Packet *packet) {
     uint8_t payload = PROTOCOL_VERSION;
-    return packet_create(packet, PACKET_SYNC, &payload, 1);
+    return packet_create(packet, PACKET_TYPE_SYNC, &payload, 1);
 }
 
 bool packet_create_sync_ack(Packet *packet) {
     uint8_t payload = PROTOCOL_VERSION;
-    return packet_create(packet, PACKET_SYNC_ACK, &payload, 1);
+    return packet_create(packet, PACKET_TYPE_SYNC_ACK, &payload, 1);
 }
 
 bool packet_create_ack(Packet *packet, uint8_t sequence) {
-    packet->header.type = PACKET_ACK;
+    packet->header.type = PACKET_TYPE_ACK;
     packet->header.sequence = sequence;
     packet->header.length = 0;
     packet->header.checksum = 0;
@@ -76,7 +76,7 @@ bool packet_create_ack(Packet *packet, uint8_t sequence) {
 }
 
 bool packet_create_nack(Packet *packet, uint8_t sequence) {
-    packet->header.type = PACKET_NACK;
+    packet->header.type = PACKET_TYPE_NACK;
     packet->header.sequence = sequence;
     packet->header.length = 0;
     packet->header.checksum = 0;
@@ -117,13 +117,13 @@ bool packet_validate(const Packet *packet) {
     
     // Validate packet type
     switch (packet->header.type) {
-        case PACKET_SYNC:
-        case PACKET_SYNC_ACK:
-        case PACKET_CMD:
-        case PACKET_DATA:
-        case PACKET_ACK:
-        case PACKET_NACK:
-        case PACKET_DEBUG:
+        case PACKET_TYPE_SYNC:
+        case PACKET_TYPE_SYNC_ACK:
+        case PACKET_TYPE_CMD:
+        case PACKET_TYPE_DATA:
+        case PACKET_TYPE_ACK:
+        case PACKET_TYPE_NACK:
+        case PACKET_TYPE_DEBUG:
             break;
         default:
             logging_write_with_context("Protocol", 
@@ -133,7 +133,7 @@ bool packet_validate(const Packet *packet) {
     }
     
     // Validate protocol version (for SYNC packets)
-    if (packet->header.type == PACKET_SYNC) {
+    if (packet->header.type == PACKET_TYPE_SYNC) {
         uint8_t version = packet->payload[0];
         if (version != PROTOCOL_VERSION) {
             char context[64];
@@ -251,7 +251,7 @@ void packet_print(const Packet *packet) {
     printf("  Checksum: 0x%08X\n", packet->header.checksum);
     
     if (packet->header.length > 0) {
-        if (packet->header.type == PACKET_DEBUG) {
+        if (packet->header.type == PACKET_TYPE_DEBUG) {
             DebugPayload *debug = (DebugPayload*)packet->payload;
             printf("  Debug Info:\n");
             printf("    Module: %s\n", debug->module);
@@ -268,13 +268,13 @@ void packet_print(const Packet *packet) {
 
 const char *packet_type_to_string(PacketType type) {
     switch (type) {
-        case PACKET_SYNC:     return "SYNC";
-        case PACKET_SYNC_ACK: return "SYNC_ACK";
-        case PACKET_CMD:      return "CMD";
-        case PACKET_DATA:     return "DATA";
-        case PACKET_ACK:      return "ACK";
-        case PACKET_NACK:     return "NACK";
-        case PACKET_DEBUG:    return "DEBUG";
+        case PACKET_TYPE_SYNC:     return "SYNC";
+        case PACKET_TYPE_SYNC_ACK: return "SYNC_ACK";
+        case PACKET_TYPE_CMD:      return "CMD";
+        case PACKET_TYPE_DATA:     return "DATA";
+        case PACKET_TYPE_ACK:      return "ACK";
+        case PACKET_TYPE_NACK:     return "NACK";
+        case PACKET_TYPE_DEBUG:    return "DEBUG";
         default:              return "UNKNOWN";
     }
 }
@@ -293,5 +293,5 @@ bool packet_create_debug(Packet *packet, const char *module, const char *message
     strncpy(payload.message, message, sizeof(payload.message) - 1);
     payload.message[sizeof(payload.message) - 1] = '\0';
     
-    return packet_create(packet, PACKET_DEBUG, (uint8_t*)&payload, sizeof(DebugPayload));
+    return packet_create(packet, PACKET_TYPE_DEBUG, (uint8_t*)&payload, sizeof(DebugPayload));
 }

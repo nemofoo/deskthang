@@ -185,11 +185,11 @@ bool protocol_process_packet(const Packet *packet) {
 
     // Process based on packet type
     switch (packet->header.type) {
-        case PACKET_SYNC:
+        case PACKET_TYPE_SYNC:
             return handle_sync_packet(packet);
-        case PACKET_CMD:
+        case PACKET_TYPE_CMD:
             return handle_command_packet(packet);
-        case PACKET_DATA:
+        case PACKET_TYPE_DATA:
             return handle_data_packet(packet);
         default:
             protocol_set_error(ERROR_TYPE_PROTOCOL, "Unknown packet type");

@@ -7,20 +7,6 @@
 #include "protocol_constants.h"  // Get constants first
 #include "packet.h"  // Then get packet definitions
 
-// Protocol version (from protocol_constants.md)
-#define PROTOCOL_VERSION 1
-
-// Buffer sizes (from protocol_constants.md)
-#define MAX_PACKET_SIZE 512
-#define CHUNK_SIZE 256
-#define HEADER_SIZE 8
-
-// Timing constants (from protocol_constants.md)
-#define BASE_TIMEOUT_MS 1000
-#define MIN_RETRY_DELAY_MS 50
-#define MAX_RETRY_DELAY_MS 1000
-#define MAX_RETRIES 8
-
 // Protocol configuration
 typedef struct {
     uint8_t version;          // Must be PROTOCOL_VERSION

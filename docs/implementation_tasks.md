@@ -1,115 +1,199 @@
 # Implementation Tasks
 
-## Critical for MVP
-
-### USB Communication Layer
-- [x] Implement USB CDC using pico_stdlib
-  - Documentation: [protocol_architecture.md](protocol_architecture.md#communication-layer)
-  - Code: [src/hardware/serial.c](../src/hardware/serial.c)
-  - Task: Implement serial communication using Pico SDK's standard library
-
-### Error Code System
-- [ ] Implement error code range validation
-  - Documentation: [protocol_architecture.md](protocol_architecture.md#error-code-ranges)
-  - Code: [src/error/error.h](../src/error/error.h)
-  - Task: Add validation to ensure error codes fall within documented ranges (1000-1999 for HARDWARE, etc.)
-
-- [ ] Consolidate error type systems
-  - Documentation: [protocol_architecture.md](protocol_architecture.md#error-management-layer)
-  - Code: 
-    - [src/protocol/protocol.h](../src/protocol/protocol.h) (`ProtocolErrorType`)
-    - [src/error/error.h](../src/error/error.h) (`ErrorType`)
-  - Task: Merge `ProtocolErrorType` and `ErrorType` into a single system
-
-### Serial Communication
-- [ ] Implement stdio buffering
-  - Task: Configure appropriate buffer sizes for stdio USB
-  - Code: Update serial.c to use stdio functions
-- [ ] Add error handling for stdio operations
-  - Task: Integrate stdio errors with error system
-  - Code: Add error codes for stdio failures
-
-### Testing Requirements
-- [ ] Add stdio communication tests
-  - Task: Verify stdio USB functionality
-  - Test: Add buffer overflow tests
-  - Test: Verify error handling
-- [ ] Add stdio initialization tests
-  - Task: Verify proper USB CDC initialization
-  - Test: Check stdio configuration
-
-### Error Logging
-- [ ] Update basic logging format
-  - Documentation: [protocol_architecture.md](protocol_architecture.md#error-logging-format)
-  - Code: [src/error/logging.c](../src/error/logging.c)
-  - Task: Implement basic error logging format: `[LOG] [timestamp] message (ERR!) | Type: type, Code: code`
+## Critical Implementation Gaps
 
 ### Protocol Constants
-- [ ] Centralize constants
-  - Documentation: [protocol_constants.md](protocol_constants.md#usage-guidelines)
-  - Code: [src/protocol/protocol.h](../src/protocol/protocol.h)
-  - Task: Move all protocol constants to protocol.h and update other files to reference them
+
+#### 1. Constants Centralization
+- **Task**: Ensure all protocol constants are centralized and consistently used
+- **References**: 
+  - [Protocol Constants Reference](protocol_constants.md#usage-guidelines)
+  - Implementation files:
+    - `src/protocol/protocol_constants.h`
+    - `src/protocol/protocol.h`
+- **Requirements**:
+  - Move all constants to protocol_constants.h
+  - Remove duplicate definitions from protocol.h
+  - Update all files to reference protocol_constants.h
+  - Verify constant values match documentation
+- **Implementation Notes**:
+  - Check for any hardcoded values in implementation
+  - Ensure consistent naming conventions
+  - Add documentation comments for each constant
+  - Verify all modules include protocol_constants.h
+
+### Error System
+
+#### 1. Error Code Range Validation
+- **Task**: Implement validation to ensure error codes fall within documented ranges
+- **References**: 
+  - [Error Code Ranges](protocol_architecture.md#error-code-ranges)
+  - Implementation file: `src/error/error.h`
+- **Requirements**:
+  - HARDWARE: 1000-1999
+  - PROTOCOL: 2000-2999
+  - STATE: 3000-3999
+  - COMMAND: 4000-4999
+  - TRANSFER: 5000-5999
+  - SYSTEM: 6000-6999
+- **Implementation Notes**:
+  - Add validation in error_code_in_range() function
+  - Return false for codes outside their type's range
+  - Add validation before accepting any error reports
+
+#### 2. Error Type System Consolidation
+- **Task**: Merge ProtocolErrorType and ErrorType into a single system
+- **References**:
+  - Implementation files:
+    - `src/protocol/protocol.h` (ProtocolErrorType)
+    - `src/error/error.h` (ErrorType)
+- **Requirements**:
+  - Consolidate all error types into error.h
+  - Update all references to use unified type
+  - Ensure backward compatibility during migration
+  - Update error reporting functions
+
+#### 3. JSON Debug Packet Format
+- **Task**: Implement JSON-formatted debug packets
+- **References**: 
+  - [Debug Packets](protocol_architecture.md#debug-packets)
+  - Implementation file: `src/error/logging.c`
+- **Requirements**:
+  - JSON Structure:
+    ```json
+    {
+      "type": "DEBUG",
+      "module": "string (32 chars max)",
+      "message": "string (256 chars max)"
+    }
+    ```
+  - Add JSON formatting utilities
+  - Update logging system to use JSON format
+  - Maintain backward compatibility
+
+#### 4. Recovery Statistics System
+- **Task**: Implement recovery statistics tracking
+- **References**:
+  - [Recovery Configuration and Persistence](protocol_modules.md#recovery-configuration-and-persistence)
+  - Implementation file: `src/error/recovery.h`
+- **Requirements**:
+  - Track statistics structure:
+    ```c
+    typedef struct {
+        uint32_t total_attempts;
+        uint32_t successful;
+        uint32_t failed;
+        uint32_t aborted;
+        uint32_t total_retry_time;
+    } RecoveryStats;
+    ```
+  - Implement statistics persistence
+  - Add reporting functions
 
 ### State Machine
-- [ ] Complete state transitions
-  - Documentation: [protocol_state_machine.md](protocol_state_machine.md#state-transition-matrix)
-  - Code: [src/state/transition.c](../src/state/transition.c)
-  - Task: Implement missing state transitions from documentation
 
-- [ ] Fix state validation
-  - Documentation: [protocol_state_machine.md](protocol_state_machine.md#validation)
-  - Code: [src/state/state.c](../src/state/state.c)
-  - Task: Add complete state validation as per documentation
+#### 1. State Transition Matrix
+- **Task**: Complete state transition matrix implementation
+- **References**:
+  - [State Transition Matrix](protocol_state_machine.md#state-transition-matrix)
+  - Implementation file: `src/state/transition.c`
+- **Requirements**:
+  - Implement all documented transitions
+  - Add validation for each transition
+  - Include transition conditions
+  - Add error handling for invalid transitions
 
-### Error Handling
-- [ ] Consolidate error handling
-  - Documentation: [protocol_modules.md](protocol_modules.md#error-handling)
-  - Code:
-    - [src/protocol/protocol.h](../src/protocol/protocol.h)
-    - [src/error/error.h](../src/error/error.h)
-  - Task: Move all error handling to error module
+#### 2. State Validation
+- **Task**: Implement complete state validation
+- **References**:
+  - [State Validation](protocol_state_machine.md#validation)
+  - Implementation file: `src/state/state.c`
+- **Requirements**:
+  - Validate state entry conditions
+  - Check resource requirements
+  - Verify timing constraints
+  - Add state history validation
 
-### Essential Tests
-- [ ] Add error code range tests
-  - Documentation: [protocol_modules.md](protocol_modules.md#testing)
-  - Code: [test/test_error.c](../test/test_error.c)
-  - Task: Add tests to verify error code ranges
+### Serial Communication
 
-- [ ] Add state transition tests
-  - Documentation: [protocol_state_machine.md](protocol_state_machine.md#testing-requirements)
-  - Code: [test/test_state.c](../test/test_state.c)
-  - Task: Add tests for all documented state transitions
+#### 1. stdio Buffering
+- **Task**: Configure appropriate buffer sizes for stdio USB
+- **References**:
+  - [Serial Implementation](serial_implementation.md#buffer-management)
+  - Implementation file: `src/hardware/serial.c`
+- **Requirements**:
+  - Configure buffer sizes:
+    - RX buffer: MAX_PACKET_SIZE (512 bytes)
+    - TX buffer: CHUNK_SIZE (256 bytes)
+  - Implement automatic flush
+  - Add buffer overflow protection
 
-## Post-MVP Improvements
+#### 2. stdio Error Handling
+- **Task**: Implement comprehensive stdio error handling
+- **References**:
+  - [Error Handling](serial_implementation.md#error-recovery)
+  - Implementation file: `src/hardware/serial.c`
+- **Requirements**:
+  - Handle USB disconnection
+  - Manage buffer overflows
+  - Report timing violations
+  - Integrate with error system
 
-### Enhanced Error Logging
-- [ ] Implement JSON debug packets
-  - Documentation: [protocol_architecture.md](protocol_architecture.md#debug-packets)
-  - Code: [src/error/logging.c](../src/error/logging.c)
-  - Task: Convert debug packet format from plain text to documented JSON structure
+### Protocol Transitions
 
-### Recovery System
-- [ ] Document recovery statistics
-  - Documentation: [protocol_modules.md](protocol_modules.md#error-handler-implementation)
-  - Code: [src/error/recovery.h](../src/error/recovery.h)
-  - Task: Add recovery statistics tracking documentation
+#### 1. Connection Sequence Implementation
+- **Task**: Implement connection establishment sequence
+- **References**:
+  - [Connection Establishment](protocol_transitions.md#1-connection-establishment)
+  - Implementation file: `src/protocol/protocol.c`
+- **Requirements**:
+  - Implement SYNC packet handling
+  - Add protocol version validation
+  - Handle SYNC_ACK responses
+  - Implement error detection and NACK
 
-- [ ] Document handler registration
-  - Documentation: [protocol_modules.md](protocol_modules.md#error-handler-implementation)
-  - Code: [src/error/recovery.h](../src/error/recovery.h)
-  - Task: Add documentation for recovery handler registration system
+#### 2. Image Transfer Implementation
+- **Task**: Implement image transfer sequence
+- **References**:
+  - [Image Transfer](protocol_transitions.md#2-image-transfer)
+  - Implementation file: `src/protocol/transfer.c`
+- **Requirements**:
+  - Implement chunk-based transfer
+  - Add chunk validation
+  - Handle display updates
+  - Implement transfer completion
 
-### Documentation Updates
-- [ ] Update module dependency documentation
-  - Documentation: [protocol_modules.md](protocol_modules.md#module-organization)
-  - Task: Document actual module dependencies with diagrams and descriptions
+#### 3. Error Recovery Implementation
+- **Task**: Implement error recovery sequence
+- **References**:
+  - [Error Recovery](protocol_transitions.md#3-error-recovery)
+  - Implementation files:
+    - `src/protocol/protocol.c`
+    - `src/error/recovery.c`
+- **Requirements**:
+  - Implement retry mechanism
+  - Add backoff calculation
+  - Handle recovery timeouts
+  - Track retry attempts
 
-- [ ] Add detailed recovery system documentation
-  - File: [protocol_modules.md](protocol_modules.md)
-  - Task: Document recovery statistics and handler registration
+## Documentation Updates
 
-### Additional Tests
-- [ ] Add logging format tests
-  - Documentation: [protocol_modules.md](protocol_modules.md#testing)
-  - Code: [test/test_logging.c](../test/test_logging.c)
-  - Task: Add tests to verify error logging format
+### 1. Module Dependencies
+- **Task**: Document module relationships and dependencies
+- **References**: 
+  - [Module Organization](protocol_modules.md#module-organization)
+- **Requirements**:
+  - Create dependency diagrams
+  - Document interaction patterns
+  - List critical dependencies
+  - Provide initialization order
+
+### 2. Recovery System
+- **Task**: Complete recovery system documentation
+- **References**:
+  - [Error Handler Implementation](protocol_modules.md#error-handler-implementation)
+- **Requirements**:
+  - Document statistics tracking
+  - Explain handler registration
+  - Detail recovery strategies
+  - Provide usage examples

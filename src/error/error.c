@@ -59,17 +59,17 @@ bool error_is_recoverable(const ErrorDetails *error) {
 bool error_code_in_range(ErrorType type, uint32_t code) {
     switch (type) {
         case ERROR_TYPE_HARDWARE:
-            return (code >= 1000 && code <= 1999);
+            return (code >= ERROR_CODE_HARDWARE_START && code <= ERROR_CODE_HARDWARE_END);
         case ERROR_TYPE_PROTOCOL:
-            return (code >= 2000 && code <= 2999);
+            return (code >= ERROR_CODE_PROTOCOL_START && code <= ERROR_CODE_PROTOCOL_END);
         case ERROR_TYPE_STATE:
-            return (code >= 3000 && code <= 3999);
+            return (code >= ERROR_CODE_STATE_START && code <= ERROR_CODE_STATE_END);
         case ERROR_TYPE_COMMAND:
-            return (code >= 4000 && code <= 4999);
+            return (code >= ERROR_CODE_COMMAND_START && code <= ERROR_CODE_COMMAND_END);
         case ERROR_TYPE_TRANSFER:
-            return (code >= 5000 && code <= 5999);
+            return (code >= ERROR_CODE_TRANSFER_START && code <= ERROR_CODE_TRANSFER_END);
         case ERROR_TYPE_SYSTEM:
-            return (code >= 6000 && code <= 6999);
+            return (code >= ERROR_CODE_SYSTEM_START && code <= ERROR_CODE_SYSTEM_END);
         default:
             return false;
     }
@@ -128,8 +128,8 @@ bool error_requires_reset(const ErrorDetails *error) {
 
 void error_report_with_context(ErrorType type, const char* message, const char* context) {
     // For now, just combine message and context into a single message
-    char combined_message[256];
-    snprintf(combined_message, sizeof(combined_message), "%s [Context: %s]", 
+    char combined_message[MAX_PACKET_SIZE/2];  // Match ErrorDetails.context size
+    snprintf(combined_message, sizeof(combined_message), "%s [Context: %s]",
              message ? message : "", context ? context : "");
     
     // Use the standard error reporting with default severity

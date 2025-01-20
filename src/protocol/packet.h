@@ -6,18 +6,25 @@
 #include "protocol_constants.h"  // For MAX_PACKET_SIZE
 #include "../error/logging.h"
 
-// Packet types
-typedef enum {
-    PACKET_SYNC = 0x1B,      // Synchronization request
-    PACKET_SYNC_ACK = 0x1C,  // Synchronization acknowledgment
-    PACKET_CMD = 0x1D,       // Command packet
-    PACKET_DATA = 0x1E,      // Data packet
-    PACKET_ACK = 0x1F,       // Acknowledgment
-    PACKET_NACK = 0x20,      // Negative acknowledgment
-    PACKET_DEBUG = 0x21      // Debug message packet
-} PacketType;
+// Packet type constants
+#define PACKET_TYPE_SYNC     0x1B  // Synchronization request
+#define PACKET_TYPE_SYNC_ACK 0x1C  // Synchronization acknowledgment
+#define PACKET_TYPE_CMD      0x1D  // Command packet
+#define PACKET_TYPE_DATA     0x1E  // Data packet
+#define PACKET_TYPE_ACK      0x1F  // Acknowledgment
+#define PACKET_TYPE_NACK     0x20  // Negative acknowledgment
+#define PACKET_TYPE_DEBUG    0x21  // Debug message packet
 
-// Packet header structure (8 bytes)
+typedef uint8_t PacketType;
+
+/**
+ * Packet header structure.
+ * Fixed size of HEADER_SIZE (8) bytes, containing:
+ * - type (1 byte): One of the PACKET_TYPE_* constants
+ * - sequence (1 byte): Packet sequence number for ordering
+ * - length (2 bytes): Length of payload data
+ * - checksum (4 bytes): CRC32 of payload data
+ */
 typedef struct {
     uint8_t type;            // Packet type
     uint8_t sequence;        // Sequence number
@@ -25,10 +32,15 @@ typedef struct {
     uint32_t checksum;       // CRC32 checksum
 } __attribute__((packed)) PacketHeader;
 
-// Complete packet structure
+/**
+ * Complete packet structure.
+ * Contains a fixed-size header followed by variable-length payload.
+ * Maximum total packet size is MAX_PACKET_SIZE bytes.
+ * Payload data is transferred in CHUNK_SIZE chunks during data transfer.
+ */
 typedef struct {
-    PacketHeader header;             // 8-byte header
-    uint8_t payload[MAX_PACKET_SIZE]; // Variable length payload (max 512 bytes)
+    PacketHeader header;                  // Fixed HEADER_SIZE (8) byte header
+    uint8_t payload[MAX_PACKET_SIZE];     // Variable length payload
 } Packet;
 
 // Packet buffer management

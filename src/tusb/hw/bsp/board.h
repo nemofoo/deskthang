@@ -19,9 +19,11 @@ extern "C" {
 #define CFG_TUD_ENABLED      1
 #define CFG_TUD_MAX_SPEED    BOARD_TUD_MAX_SPEED
 
+#include "../../../protocol/protocol_constants.h"
+
 // CDC FIFO size of TX and RX
-#define CFG_TUD_CDC_RX_BUFSIZE   512
-#define CFG_TUD_CDC_TX_BUFSIZE   512
+#define CFG_TUD_CDC_RX_BUFSIZE   MAX_PACKET_SIZE
+#define CFG_TUD_CDC_TX_BUFSIZE   MAX_PACKET_SIZE
 
 // CDC Endpoint transfer buffer size, more is faster
 #define CFG_TUD_CDC_EP_BUFSIZE   64
@@ -37,4 +39,4 @@ extern "C" {
 }
 #endif
 
-#endif /* BOARD_H_ */ 
+#endif /* BOARD_H_ */

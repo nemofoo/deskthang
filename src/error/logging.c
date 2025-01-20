@@ -51,7 +51,7 @@ void logging_error(const ErrorDetails *error) {
         return;
     }
 
-    char message[512];
+    char message[MAX_PACKET_SIZE];
     snprintf(message, sizeof(message),
              "%s (ERR!) | Type: %s, Severity: %s, Code: %u, Recoverable: %s",
              error->message,
@@ -69,7 +69,7 @@ void logging_recovery(const RecoveryResult *result) {
         return;
     }
     
-    char context[512];
+    char context[MAX_PACKET_SIZE/2];  // Match ErrorDetails.context size
     snprintf(context, sizeof(context),
              "Duration: %ums, Attempts: %u",
              result->duration_ms,
