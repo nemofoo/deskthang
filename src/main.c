@@ -251,7 +251,7 @@ int main() {
         
         // Handle any pending errors
         ErrorDetails *error = error_get_last();
-        if (error) {
+        if (error && error->message[0] != '\0') {  // Only handle non-empty errors
             gpio_put(LED_PIN, 1);  // LED on while handling error
             printf("Error detected: %s\n", error->message);
             fflush(stdout);

@@ -169,12 +169,11 @@ bool serial_read(uint8_t *data, size_t len) {
 
     uint32_t start = deskthang_time_get_ms();
     size_t total_read = 0;
-    bool underflow_reported = false;
 
     while (total_read < len) {
         if (deskthang_time_get_ms() - start > serial_state.timeout_ms) {
-            // Report underflow only once
-            if (!underflow_reported) {
+            // Only report timeout as error if we've started reading data
+            if (total_read > 0) {
                 ErrorDetails error = {
                     .type = ERROR_TYPE_HARDWARE,
                     .severity = ERROR_SEVERITY_WARNING,
@@ -185,24 +184,26 @@ bool serial_read(uint8_t *data, size_t len) {
                     .retry_count = 0,
                     .backoff_ms = 0
                 };
-                strncpy(error.message, "Buffer underflow detected", ERROR_MESSAGE_SIZE - 1);
+                strncpy(error.message, "Incomplete read detected", ERROR_MESSAGE_SIZE - 1);
                 error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
                 snprintf(error.context, ERROR_CONTEXT_SIZE - 1, "Expected %zu bytes, got %zu", len, total_read);
                 logging_error(&error);
-                underflow_reported = true;
             }
             return false;  // Timeout
         }
 
         int c = getchar_timeout_us(0);  // Non-blocking read
+        if (c == PICO_ERROR_TIMEOUT) {
+            // No data available, not an error
+            return false;
+        }
+        
         if (c != PICO_ERROR_TIMEOUT) {
             data[total_read++] = (uint8_t)c;
-            // Reset underflow flag on successful read
-            underflow_reported = false;
         }
     }
 
-    return true;
+    return total_read == len;
 }
 
 bool serial_write_debug(const char *module, const char *message) {

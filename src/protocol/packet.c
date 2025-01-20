@@ -416,28 +416,32 @@ bool packet_receive(Packet* packet) {
     uint16_t data_index = 0;
     uint8_t receive_buffer[MAX_PACKET_SIZE];
     
-    // Wait for start of frame
-    while (serial_read(&byte, 1)) {
-        if (byte == FRAME_START) {
-            in_frame = true;
-            break;
+    // Try to read a byte - if none available, that's fine
+    if (!serial_read(&byte, 1)) {
+        return false;  // No data available, not an error
+    }
+    
+    // Got a byte - is it a frame start?
+    if (byte == FRAME_START) {
+        in_frame = true;
+    } else {
+        return false;  // Not a frame start, ignore
+    }
+    
+    // Read until frame end or timeout
+    uint32_t start_time = deskthang_time_get_ms();
+    while (deskthang_time_get_ms() - start_time < BASE_TIMEOUT_MS) {
+        if (!serial_read(&byte, 1)) {
+            continue;  // No data available, keep trying
         }
-    }
-    
-    if (!in_frame) {
-        logging_write("Protocol", "Frame start not found");
-        return false;
-    }
-    
-    // Read until frame end
-    while (serial_read(&byte, 1)) {
+        
         if (escaped) {
             receive_buffer[data_index++] = byte ^ 0x20;
             escaped = false;
         } else if (byte == FRAME_ESCAPE) {
             escaped = true;
         } else if (byte == FRAME_END) {
-            break;
+            break;  // Found end of frame
         } else if (byte == FRAME_START) {
             // Unexpected frame start - reset
             data_index = 0;
@@ -452,18 +456,23 @@ bool packet_receive(Packet* packet) {
         }
     }
     
-    // Check if we have at least a header
+    // If we got here without finding frame end, log it
+    if (deskthang_time_get_ms() - start_time >= BASE_TIMEOUT_MS) {
+        logging_write("Protocol", "Timeout waiting for frame end");
+        return false;
+    }
+    
+    // Process the received frame
     if (data_index < HEADER_SIZE) {
-        logging_write("Protocol", "Incomplete packet header");
+        logging_write("Protocol", "Received frame too small");
         return false;
     }
     
     // Copy header
     memcpy(&packet->header, receive_buffer, HEADER_SIZE);
     
-    // Validate header
-    if (!packet_validate_header(&packet->header)) {
-        logging_write("Protocol", "Invalid packet header");
+    // Validate header fields
+    if (!packet_validate(packet)) {
         return false;
     }
     
