@@ -3,6 +3,7 @@
 #include "deskthang_spi.h"
 #include "display.h"
 #include <string.h>
+#include <stdio.h>
 
 // Static hardware configuration
 static HardwareConfig hw_config;
@@ -10,17 +11,23 @@ static bool is_initialized = false;
 
 bool hardware_init(const HardwareConfig *config) {
     if (config == NULL) {
+        printf("Hardware Error: NULL config\n");
         return false;
     }
 
     // Store configuration in a non-const local copy
     memcpy(&hw_config, config, sizeof(HardwareConfig));
     
+    printf("Hardware: Initializing GPIO...\n");
     // Initialize GPIO first
     if (!deskthang_gpio_init(&hw_config)) {
+        printf("Hardware Error: GPIO initialization failed\n");
         return false;
     }
+    printf("Hardware: GPIO initialized successfully\n");
     
+    printf("Hardware: Initializing SPI (port %d, baud %lu)...\n", 
+           config->spi_port, (unsigned long)config->spi_baud);
     // Initialize SPI after GPIO
     DeskthangSPIConfig spi_config = {
         .spi_port = config->spi_port,
@@ -32,9 +39,11 @@ bool hardware_init(const HardwareConfig *config) {
     };
     
     if (!deskthang_spi_init(&spi_config)) {
+        printf("Hardware Error: SPI initialization failed\n");
         deskthang_gpio_deinit();
         return false;
     }
+    printf("Hardware: SPI initialized successfully\n");
     
     // Mark as initialized
     is_initialized = true;

@@ -11,31 +11,86 @@ void GC9A01_set_orientation(uint8_t orientation) {
 }
 
 void GC9A01_write_command(uint8_t cmd) {
-    GC9A01_set_data_command(0);
-    GC9A01_set_chip_select(0);
-    bool success = deskthang_spi_write(&cmd, sizeof(cmd));
-    GC9A01_set_chip_select(1);
-    if (!success) {
-        printf("Display Error: Failed to write command 0x%02X\n", cmd);
+    if (!deskthang_spi_is_initialized()) {
+        printf("Display Error: SPI not initialized when writing command 0x%02X\n", cmd);
+        return;
     }
+
+    GC9A01_set_data_command(0);  // Command mode
+    sleep_us(1);                 // Small delay for D/C setup
+    
+    GC9A01_set_chip_select(0);   // CS active
+    sleep_us(1);                 // Small delay for CS setup
+    
+    bool success = deskthang_spi_write(&cmd, sizeof(cmd));
+    
+    sleep_us(1);                 // Small delay before CS change
+    GC9A01_set_chip_select(1);   // CS inactive
+    
+    if (!success) {
+        printf("Display Error: Failed to write command 0x%02X (SPI error)\n", cmd);
+    }
+    
+    sleep_us(10);  // Delay between commands
 }
 
 void GC9A01_write_data(const uint8_t *data, size_t len) {
-    GC9A01_set_data_command(1);
-    GC9A01_set_chip_select(0);
-    bool success = deskthang_spi_write(data, len);
-    GC9A01_set_chip_select(1);
-    if (!success) {
-        printf("Display Error: Failed to write %zu bytes of data\n", len);
+    if (!deskthang_spi_is_initialized()) {
+        printf("Display Error: SPI not initialized when writing %zu bytes of data\n", len);
+        return;
     }
+
+    if (!data) {
+        printf("Display Error: NULL data pointer\n");
+        return;
+    }
+
+    GC9A01_set_data_command(1);  // Data mode
+    sleep_us(1);                 // Small delay for D/C setup
+    
+    GC9A01_set_chip_select(0);   // CS active
+    sleep_us(1);                 // Small delay for CS setup
+    
+    bool success = deskthang_spi_write(data, len);
+    
+    sleep_us(1);                 // Small delay before CS change
+    GC9A01_set_chip_select(1);   // CS inactive
+    
+    if (!success) {
+        printf("Display Error: Failed to write %zu bytes of data (SPI error)\n", len);
+        // Print first byte if available for debugging
+        if (len > 0) {
+            printf("Display Error: First byte was 0x%02X\n", data[0]);
+        }
+    }
+    
+    sleep_us(10);  // Delay between data writes
 }
 
 static inline void GC9A01_write_byte(uint8_t val) {
     GC9A01_write_data(&val, sizeof(val));
+    sleep_us(5);  // Small delay between bytes
 }
 
 void GC9A01_init(void) {
     printf("Display: Starting initialization sequence\n");
+    
+    // Check if SPI is initialized
+    if (!deskthang_spi_is_initialized()) {
+        printf("Display Error: SPI not initialized before display init\n");
+        return;
+    }
+    
+    // Check GPIO pins
+    printf("Display: Checking GPIO pins...\n");
+    if (!gpio_is_dir_out(DISPLAY_PIN_CS) || !gpio_is_dir_out(DISPLAY_PIN_DC) || !gpio_is_dir_out(DISPLAY_PIN_RST)) {
+        printf("Display Error: GPIO pins not properly configured\n");
+        printf("CS pin (GPIO %d) output: %d\n", DISPLAY_PIN_CS, gpio_is_dir_out(DISPLAY_PIN_CS));
+        printf("DC pin (GPIO %d) output: %d\n", DISPLAY_PIN_DC, gpio_is_dir_out(DISPLAY_PIN_DC));
+        printf("RST pin (GPIO %d) output: %d\n", DISPLAY_PIN_RST, gpio_is_dir_out(DISPLAY_PIN_RST));
+        return;
+    }
+    printf("Display: GPIO pins configured correctly\n");
     
     GC9A01_set_chip_select(1);
     GC9A01_delay(5);

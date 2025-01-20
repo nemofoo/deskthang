@@ -10,7 +10,7 @@
 #include "protocol/packet.h"
 
 // Hardware configuration
-static const HardwareConfig hw_config = {
+const HardwareConfig hw_config = {
     .spi_port = DISPLAY_SPI_PORT,
     .spi_baud = DISPLAY_SPI_BAUD,
     .pins = {
@@ -28,7 +28,7 @@ static const HardwareConfig hw_config = {
 };
 
 // Display configuration
-static const DisplayConfig display_config = {
+const DisplayConfig display_config = {
     .orientation = DISPLAY_ORIENTATION_0,
     .brightness = 255,
     .inverted = false
@@ -157,14 +157,13 @@ int main() {
     fflush(stdout);
     
     // Initialize core subsystems
-    printf("Initializing core subsystems...\n");
+    printf("Initializing state machine...\n");
     fflush(stdout);
     gpio_put(LED_PIN, 1);  // LED on during initialization
-    
-    if (!init_subsystems()) {
+
+    if (!state_machine_init()) {
         // Handle initialization failure
-        error_print_last();
-        printf("Core initialization failed!\n");
+        printf("State machine initialization failed!\n");
         fflush(stdout);
         while(1) {
             gpio_put(LED_PIN, 1);  // Fast blink to indicate failure
@@ -174,99 +173,58 @@ int main() {
         }
         return 1;
     }
-    
-    logging_write("Main", "Core systems initialized successfully");
-    printf("Core initialization successful!\n");
+
+    logging_write("Main", "State machine initialized successfully");
+    printf("State machine initialization successful!\n");
     fflush(stdout);
-    
-    // Now try to initialize display
-    printf("Initializing display...\n");
+
+    // Let the state machine handle initialization
+    printf("Starting state machine initialization sequence...\n");
     fflush(stdout);
-    if (!display_init(&hw_config, &display_config)) {
-        printf("Display initialization failed - continuing without display\n");
-        fflush(stdout);
-        // Flash LED 3 times to indicate display failure but continue
-        for(int i = 0; i < 3; i++) {
-            gpio_put(LED_PIN, 0); sleep_ms(100);
-            gpio_put(LED_PIN, 1); sleep_ms(100);
-        }
-    } else {
-        printf("Display initialized successfully\n");
-        fflush(stdout);
-    }
-    
-    // Try to initialize protocol
-    printf("Initializing protocol...\n");
-    fflush(stdout);
-    if (!protocol_init(&protocol_config)) {
-        printf("Protocol initialization failed - continuing without protocol\n");
-        fflush(stdout);
-        // Flash LED 3 times to indicate protocol failure but continue
-        for(int i = 0; i < 3; i++) {
-            gpio_put(LED_PIN, 0); sleep_ms(100);
-            gpio_put(LED_PIN, 1); sleep_ms(100);
-        }
-    } else {
-        printf("Protocol initialized successfully\n");
-        fflush(stdout);
-    }
-    
+
+    // Main event loop
     uint32_t heartbeat = 0;
     bool led_state = false;
-    
-    // Main event loop
+    Packet packet;  // Moved outside switch
+
     while (1) {
+        SystemState current_state = state_machine_get_current();
+        
+        // Process state-specific actions
+        switch (current_state) {
+            case STATE_IDLE:
+            case STATE_READY:
+                // Process packets in these states
+                if (packet_receive(&packet)) {
+                    gpio_put(LED_PIN, 1);  // Flash LED briefly when packet received
+                    printf("Received packet type: %d\n", packet.header.type);
+                    fflush(stdout);
+                    if (!protocol_process_packet(&packet)) {
+                        // Handle protocol error through state machine
+                        state_machine_transition(STATE_ERROR, CONDITION_ERROR);
+                    }
+                    sleep_ms(50);  // Keep LED on briefly
+                    gpio_put(LED_PIN, led_state);  // Return to heartbeat state
+                }
+                break;
+                
+            case STATE_ERROR:
+                // Handle error recovery
+                if (state_machine_handle_error()) {
+                    // Error handled, state machine will transition
+                    continue;
+                }
+                break;
+        }
+        
         // Heartbeat every second
         if (heartbeat % 1000 == 0) {
             led_state = !led_state;  // Toggle LED with heartbeat
             gpio_put(LED_PIN, led_state);
-            printf("Heartbeat: %lu\n", heartbeat / 1000);
+            printf("Heartbeat: %lu, State: %s\n", heartbeat / 1000, state_to_string(current_state));
             fflush(stdout);
         }
         heartbeat++;
         sleep_ms(1);
-        
-        // Process any pending packets
-        Packet packet;
-        if (packet_receive(&packet)) {
-            gpio_put(LED_PIN, 1);  // Flash LED briefly when packet received
-            printf("Received packet type: %d\n", packet.header.type);
-            fflush(stdout);
-            if (!protocol_process_packet(&packet)) {
-                // Handle protocol error
-                ErrorDetails *error = error_get_last();
-                if (error && error_is_recoverable(error)) {
-                    RecoveryResult result = recovery_attempt(error);
-                    // Log recovery attempt
-                    char msg[64];
-                    snprintf(msg, sizeof(msg), "%s (Duration: %ums, Attempts: %u)", 
-                             result.message, result.duration_ms, result.attempts);
-                    logging_write("Recovery", msg);
-                    printf("Recovery attempt: %s\n", msg);
-                    fflush(stdout);
-                }
-            }
-            sleep_ms(50);  // Keep LED on briefly
-            gpio_put(LED_PIN, led_state);  // Return to heartbeat state
-        }
-        
-        // Handle any pending errors
-        ErrorDetails *error = error_get_last();
-        if (error && error->message[0] != '\0') {  // Only handle non-empty errors
-            gpio_put(LED_PIN, 1);  // LED on while handling error
-            printf("Error detected: %s\n", error->message);
-            fflush(stdout);
-            if (error_is_recoverable(error)) {
-                RecoveryResult result = recovery_attempt(error);
-                // Log recovery attempt
-                char msg[64];
-                snprintf(msg, sizeof(msg), "%s (Duration: %ums, Attempts: %u)", 
-                         result.message, result.duration_ms, result.attempts);
-                logging_write("Recovery", msg);
-                printf("Recovery attempt: %s\n", msg);
-                fflush(stdout);
-            }
-            gpio_put(LED_PIN, led_state);  // Return to heartbeat state
-        }
     }
 }

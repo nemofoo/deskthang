@@ -3,6 +3,7 @@
 #include "hardware/gpio.h" // Pico SDK GPIO
 #include "deskthang_gpio.h"
 #include "../error/logging.h"
+#include <stdio.h>
 
 // Static configuration
 static struct {
@@ -44,12 +45,15 @@ bool deskthang_spi_init(const DeskthangSPIConfig *config) {
     // Initialize SPI hardware with default format
     spi_init(spi_state.spi, spi_state.baud_rate);
     
-    // Set standard SPI format (mode 0, MSB first)
+    // Set SPI format for GC9A01 (mode 0: CPOL=0, CPHA=0)
     spi_set_format(spi_state.spi,
                    8,       // 8 data bits
                    0,       // CPOL = 0
                    0,       // CPHA = 0
                    SPI_MSB_FIRST);
+
+    // Add a small delay after initialization
+    sleep_ms(1);
 
     spi_state.initialized = true;
     spi_initialized = true;
@@ -71,15 +75,38 @@ void deskthang_spi_deinit(void) {
 }
 
 bool deskthang_spi_write(const uint8_t *data, size_t len) {
-    if (!spi_state.initialized || !data) {
+    if (!spi_state.initialized) {
+        logging_write("SPI", "Write failed: SPI not initialized");
+        return false;
+    }
+    
+    if (!data) {
+        logging_write("SPI", "Write failed: NULL data pointer");
         return false;
     }
 
-    gpio_put(spi_state.cs_pin, 0);  // CS low (active)
-    int bytes_written = spi_write_blocking(spi_state.spi, data, len);
-    gpio_put(spi_state.cs_pin, 1);  // CS high (inactive)
+    // Check if SPI is properly configured
+    if (!spi_is_writable(spi_state.spi)) {
+        logging_write("SPI", "Write failed: SPI not writable");
+        return false;
+    }
 
-    return bytes_written == len;
+    // Don't toggle CS here since it's handled by the display driver
+    int bytes_written = spi_write_blocking(spi_state.spi, data, len);
+    
+    if (bytes_written < 0) {
+        logging_write("SPI", "Write failed: SPI error during transmission");
+        return false;
+    }
+    
+    if (bytes_written != len) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Write incomplete: %d/%zu bytes written", bytes_written, len);
+        logging_write("SPI", msg);
+        return false;
+    }
+
+    return true;
 }
 
 bool deskthang_spi_read(uint8_t *data, size_t len) {

@@ -9,8 +9,14 @@
 #include "../protocol/command.h"
 #include "../protocol/transfer.h"
 #include "../debug/debug.h"
+#include "../hardware/hardware.h"
+#include "../hardware/display.h"
 #include "pico/stdlib.h"
 #include "pico/bootrom.h"
+
+// External configurations
+extern const HardwareConfig hw_config;
+extern const DisplayConfig display_config;
 
 // Forward declare hardware functions we need
 bool spi_is_configured(void);
@@ -19,6 +25,16 @@ bool timing_requirements_met(void);
 bool display_reset_complete(void);
 bool display_params_valid(void);
 bool display_responding(void);
+
+// Forward declare protocol functions
+bool protocol_validate_version(uint8_t version);
+bool protocol_timing_valid(void);
+bool command_type_valid(void);
+bool command_params_valid(void);
+bool command_resources_available(void);
+bool transfer_buffer_available(void);
+bool transfer_sequence_valid(void);
+bool transfer_checksum_valid(void);
 
 // Add after includes
 extern void log_info(const char *format, ...);  // From logging.h
@@ -95,25 +111,47 @@ const StateActions STATE_ACTIONS[] = {
 
 // State action handler implementations
 static void hardware_init_entry(void) {
-    // Configure SPI interface
-    // Set up GPIO pins
-    // Initialize timers
-    // Configure interrupts
+    printf("State: Entering HARDWARE_INIT\n");
+    
+    // Initialize hardware
+    if (!hardware_init(&hw_config)) {
+        printf("State: Hardware initialization failed\n");
+        state_machine_transition(STATE_ERROR, CONDITION_ERROR);
+        return;
+    }
+    
+    // Hardware init successful, move to display init
+    printf("State: Hardware initialization successful\n");
+    state_machine_transition(STATE_DISPLAY_INIT, CONDITION_HARDWARE_READY);
 }
 
 static void hardware_init_exit(void) {
-    // Clean up if needed
+    // Nothing to clean up
 }
 
 static void hardware_init_error(void *ctx) {
     // Handle hardware initialization errors
+    printf("State: Hardware initialization error\n");
+    // Try to recover by reinitializing
+    if (!hardware_reset()) {
+        printf("State: Hardware reset failed\n");
+        state_machine_transition(STATE_ERROR, CONDITION_ERROR);
+    }
 }
 
 static void display_init_entry(void) {
-    // Send reset sequence
-    // Configure display parameters
-    // Set up display mode
-    // Initialize display buffer
+    printf("State: Entering DISPLAY_INIT\n");
+    
+    // Initialize display
+    if (!display_init(&hw_config, &display_config)) {
+        printf("State: Display initialization failed\n");
+        state_machine_transition(STATE_ERROR, CONDITION_ERROR);
+        return;
+    }
+    
+    // Display init successful, move to idle
+    printf("State: Display initialization successful\n");
+    state_machine_transition(STATE_IDLE, CONDITION_DISPLAY_READY);
 }
 
 static void display_init_exit(void) {
@@ -219,6 +257,12 @@ bool state_machine_init(void) {
     g_state_context.current_state = STATE_HARDWARE_INIT;
     g_state_context.previous_state = STATE_HARDWARE_INIT;
     g_state_context.last_condition = CONDITION_NONE;
+    g_state_context.last_update = deskthang_time_get_ms();
+    
+    // Execute entry action for initial state
+    if (STATE_ACTIONS[STATE_HARDWARE_INIT].on_entry) {
+        STATE_ACTIONS[STATE_HARDWARE_INIT].on_entry();
+    }
     
     return true;
 }
@@ -227,14 +271,25 @@ bool state_machine_transition(SystemState next_state, StateCondition condition) 
     // Get current state
     SystemState current = state_machine_get_current();
 
+    printf("State: Attempting transition from %s to %s (condition: %s)\n",
+           state_to_string(current),
+           state_to_string(next_state),
+           condition_to_string(condition));
+
     // Validate transition
     if (!state_machine_validate_transition(current, next_state, condition)) {
+        printf("State Error: Invalid transition from %s to %s\n",
+               state_to_string(current),
+               state_to_string(next_state));
         logging_write("State", "Invalid state transition");
         return false;
     }
 
     // Execute exit actions for current state
-    transition_execute_exit_actions(current);
+    if (STATE_ACTIONS[current].on_exit) {
+        printf("State: Executing exit actions for %s\n", state_to_string(current));
+        STATE_ACTIONS[current].on_exit();
+    }
 
     // Update state
     g_state_context.previous_state = current;
@@ -243,9 +298,12 @@ bool state_machine_transition(SystemState next_state, StateCondition condition) 
     g_state_context.last_update = deskthang_time_get_ms();
 
     // Execute entry actions for new state
-    transition_execute_entry_actions(next_state);
+    if (STATE_ACTIONS[next_state].on_entry) {
+        printf("State: Executing entry actions for %s\n", state_to_string(next_state));
+        STATE_ACTIONS[next_state].on_entry();
+    }
 
-    // Log the transition
+    printf("State: Successfully transitioned to %s\n", state_to_string(next_state));
     logging_write("State", "State transition complete");
 
     return true;
@@ -482,10 +540,36 @@ bool state_machine_validate_state(SystemState state) {
 }
 
 bool state_machine_validate_transition(SystemState current, SystemState next, StateCondition condition) {
-    // Add your state transition validation logic here
-    // For now, allow all transitions but validate the states
+    // First validate the states themselves
     if (!state_machine_validate_state(current) || !state_machine_validate_state(next)) {
+        printf("State Error: Invalid state value(s) in transition\n");
         return false;
     }
-    return true;
+
+    // Define valid transitions
+    switch (current) {
+        case STATE_HARDWARE_INIT:
+            // Can only go to DISPLAY_INIT or ERROR
+            return (next == STATE_DISPLAY_INIT && condition == CONDITION_HARDWARE_READY) ||
+                   (next == STATE_ERROR && condition == CONDITION_ERROR);
+
+        case STATE_DISPLAY_INIT:
+            // Can go to IDLE or ERROR
+            return (next == STATE_IDLE && condition == CONDITION_DISPLAY_READY) ||
+                   (next == STATE_ERROR && condition == CONDITION_ERROR);
+
+        case STATE_IDLE:
+            // Can go to SYNCING or ERROR
+            return (next == STATE_SYNCING && condition == CONDITION_SYNC_RECEIVED) ||
+                   (next == STATE_ERROR && condition == CONDITION_ERROR);
+
+        case STATE_ERROR:
+            // Can attempt recovery to previous state or reset to IDLE
+            return (next == g_state_context.previous_state && condition == CONDITION_RECOVERED) ||
+                   (next == STATE_IDLE && condition == CONDITION_RESET);
+
+        default:
+            printf("State Error: Unhandled current state in transition validation\n");
+            return false;
+    }
 }
