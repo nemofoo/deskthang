@@ -73,6 +73,10 @@ bool command_process(const uint8_t *data, size_t len) {
         case CMD_HELP:
             result = command_show_help();
             break;
+
+        case CMD_PING:
+            result = command_ping();
+            break;
             
         default:
             command_set_status(false, "Unknown command");
@@ -124,6 +128,7 @@ bool command_validate_type(CommandType type) {
         case CMD_PATTERN_STRIPE:
         case CMD_PATTERN_GRADIENT:
         case CMD_HELP:
+        case CMD_PING:
             return true;
         default:
             return false;
@@ -196,6 +201,7 @@ bool command_show_help(void) {
         "1: Show checkerboard pattern\n"
         "2: Show stripe pattern\n"
         "3: Show gradient pattern\n"
+        "P: Ping (returns PONG)\n"
         "H: Display this help message\n";
     
     strncpy(g_command_status.message, help_text, sizeof(g_command_status.message) - 1);
@@ -231,6 +237,7 @@ const char *command_type_to_string(CommandType type) {
         case CMD_PATTERN_STRIPE:  return "PATTERN_STRIPE";
         case CMD_PATTERN_GRADIENT:return "PATTERN_GRADIENT";
         case CMD_HELP:           return "HELP";
+        case CMD_PING:           return "PING";
         default:                 return "UNKNOWN";
     }
 }
@@ -248,5 +255,11 @@ bool command_params_valid(void) {
 
 bool command_resources_available(void) {
     // TODO: Implement proper validation
+    return true;
+}
+
+// Ping command implementation
+bool command_ping(void) {
+    strncpy(g_command_status.message, "PONG", sizeof(g_command_status.message) - 1);
     return true;
 }

@@ -16,7 +16,8 @@ typedef enum {
     CMD_PATTERN_CHECKER = '1', // Show checkerboard pattern
     CMD_PATTERN_STRIPE = '2',  // Show stripe pattern
     CMD_PATTERN_GRADIENT = '3',// Show gradient pattern
-    CMD_HELP = 'H'            // Display help/command list
+    CMD_HELP = 'H',           // Display help/command list
+    CMD_PING = 'P'            // Ping command for testing
 } CommandType;
 
 // Command context for tracking multi-packet commands
@@ -76,5 +77,8 @@ const char *command_type_to_string(CommandType type);
 bool command_type_valid(void);
 bool command_params_valid(void);
 bool command_resources_available(void);
+
+// Add ping command prototype
+bool command_ping(void);
 
 #endif // COMMAND_H
