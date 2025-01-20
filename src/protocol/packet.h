@@ -1,9 +1,9 @@
-#ifndef DESKTHANG_PACKET_H
-#define DESKTHANG_PACKET_H
+#ifndef PACKET_H
+#define PACKET_H
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "protocol.h"
+#include "protocol_constants.h"  // For MAX_PACKET_SIZE
 #include "../error/logging.h"
 
 // Packet types
@@ -72,4 +72,4 @@ bool packet_receive(Packet *packet);
 void packet_print(const Packet *packet);
 const char *packet_type_to_string(PacketType type);
 
-#endif // DESKTHANG_PACKET_H
+#endif // PACKET_H

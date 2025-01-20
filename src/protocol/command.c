@@ -1,6 +1,6 @@
+#include "../system/time.h"
 #include "command.h"
 #include "../state/state.h"
-#include "../system/time.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,7 +42,7 @@ bool command_process(const uint8_t *data, size_t len) {
     }
 
     // Track timing
-    g_command_context.start_time = get_system_time();
+    g_command_context.start_time = deskthang_time_get_ms();
     g_command_context.type = (CommandType)data[0];
     g_command_context.in_progress = true;
 
@@ -72,7 +72,7 @@ bool command_complete(void) {
     }
     
     // Update status
-    g_command_status.duration_ms = get_system_time() - g_command_context.start_time;
+    g_command_status.duration_ms = deskthang_time_get_ms() - g_command_context.start_time;
     g_command_status.bytes_processed = g_command_context.bytes_processed;
     g_command_status.success = true;
     
@@ -213,4 +213,20 @@ const char *command_type_to_string(CommandType type) {
         case CMD_HELP:           return "HELP";
         default:                 return "UNKNOWN";
     }
+}
+
+// Add these implementations
+bool command_type_valid(void) {
+    // TODO: Implement proper validation
+    return true;
+}
+
+bool command_params_valid(void) {
+    // TODO: Implement proper validation
+    return true;
+}
+
+bool command_resources_available(void) {
+    // TODO: Implement proper validation
+    return true;
 }

@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include "hardware.h"
 #include "GC9A01.h"
+#include "deskthang_gpio.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -106,6 +107,11 @@ const DisplayConfig* display_get_config(void);
  * @return true if display is initialized, false otherwise
  */
 bool display_is_initialized(void);
+
+// Add these declarations
+bool display_reset_complete(void);
+bool display_params_valid(void);
+bool display_responding(void);
 
 #ifdef __cplusplus
 }

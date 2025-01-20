@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "../error/error.h"
+#include "protocol_constants.h"  // Get constants first
+#include "packet.h"  // Then get packet definitions
 
 // Protocol version (from protocol_constants.md)
 #define PROTOCOL_VERSION 1
@@ -62,5 +64,14 @@ bool protocol_validate_version(uint8_t version);
 bool protocol_validate_sequence(uint8_t sequence);
 bool protocol_validate_length(uint16_t length);
 bool protocol_validate_checksum(uint32_t checksum, const uint8_t *data, uint16_t length);
+
+bool protocol_process_packet(const Packet *packet);
+
+bool protocol_timing_valid(void);
+
+// Add these declarations
+bool transfer_buffer_available(void);
+bool transfer_sequence_valid(void);
+bool transfer_checksum_valid(void);
 
 #endif // PROTOCOL_H

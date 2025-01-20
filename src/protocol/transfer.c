@@ -1,8 +1,8 @@
+#include "../system/time.h"
 #include "transfer.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "../system/time.h"
 
 // Global transfer context
 static TransferContext g_transfer_context;
@@ -41,7 +41,7 @@ bool transfer_start(TransferMode mode, uint32_t total_size) {
     // Initialize transfer context
     g_transfer_context.mode = mode;
     g_transfer_context.state = TRANSFER_STATE_STARTING;
-    g_transfer_context.start_time = get_system_time();
+    g_transfer_context.start_time = deskthang_time_get_ms();
     g_transfer_context.bytes_expected = total_size;
     g_transfer_context.chunks_expected = (total_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
     
@@ -170,7 +170,7 @@ uint32_t transfer_get_remaining_bytes(void) {
 }
 
 uint32_t transfer_get_elapsed_time(void) {
-    return get_system_time() - g_transfer_context.start_time;
+    return deskthang_time_get_ms() - g_transfer_context.start_time;
 }
 
 uint32_t transfer_get_estimated_time_remaining(void) {
@@ -279,4 +279,20 @@ const char *transfer_state_to_string(TransferState state) {
         case TRANSFER_STATE_ERROR:       return "ERROR";
         default:                         return "UNKNOWN";
     }
+}
+
+// Add these implementations
+bool transfer_buffer_available(void) {
+    // TODO: Implement proper buffer availability check
+    return true;
+}
+
+bool transfer_sequence_valid(void) {
+    // TODO: Implement proper sequence validation
+    return true;
+}
+
+bool transfer_checksum_valid(void) {
+    // TODO: Implement proper checksum validation  
+    return true;
 }

@@ -1,18 +1,20 @@
 #include "GC9A01.h"
+#include "deskthang_spi.h"  // Changed from spi.h
+#include "hardware/gpio.h"
 
 #define ORIENTATION 2   // Set the display orientation 0,1,2,3
 
 void GC9A01_write_command(uint8_t cmd) {
     GC9A01_set_data_command(0);
     GC9A01_set_chip_select(0);
-    GC9A01_spi_tx(&cmd, sizeof(cmd));
+    deskthang_spi_write(&cmd, sizeof(cmd));  // Changed from spi_write
     GC9A01_set_chip_select(1);
 }
 
-void GC9A01_write_data(uint8_t *data, size_t len) {
+void GC9A01_write_data(const uint8_t *data, size_t len) {
     GC9A01_set_data_command(1);
     GC9A01_set_chip_select(0);
-    GC9A01_spi_tx(data, len);
+    deskthang_spi_write(data, len);
     GC9A01_set_chip_select(1);
 }
 
@@ -295,12 +297,18 @@ void GC9A01_set_frame(struct GC9A01_frame frame) {
     
 }
 
-void GC9A01_write(uint8_t *data, size_t len) {
-    GC9A01_write_command(MEM_WR);
+void GC9A01_write(const uint8_t *data, size_t len) {
+    GC9A01_set_data_command(1);
+    GC9A01_set_chip_select(0);
+    deskthang_spi_write(data, len);
+    GC9A01_set_chip_select(1);
+}
+
+void GC9A01_write_continue(const uint8_t *data, size_t len) {
+    GC9A01_write_command(MEM_WR_CONT);
     GC9A01_write_data(data, len);
 }
 
-void GC9A01_write_continue(uint8_t *data, size_t len) {
-    GC9A01_write_command(MEM_WR_CONT);
-    GC9A01_write_data(data, len);
+void GC9A01_delay(uint16_t ms) {
+    deskthang_delay_ms(ms);
 }

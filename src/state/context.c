@@ -3,14 +3,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "../system/time.h"  // For get_system_time()
+#include "../system/time.h"  // For time_get_ms()
 
 // Global state context
 static StateContext g_state_context;
 
 void state_context_init(void) {
     memset(&g_state_context, 0, sizeof(StateContext));
-    g_state_context.entry_time = get_system_time();
+    g_state_context.entry_time = deskthang_time_get_ms();
     g_state_context.current_state = STATE_HARDWARE_INIT;
     g_state_context.previous_state = STATE_HARDWARE_INIT;
     g_state_context.last_condition = CONDITION_NONE;
@@ -21,8 +21,8 @@ void state_context_set_state(SystemState state, StateCondition condition) {
     g_state_context.previous_state = g_state_context.current_state;
     g_state_context.current_state = state;
     g_state_context.last_condition = condition;
-    g_state_context.entry_time = get_system_time();
-    g_state_context.last_update = get_system_time();
+    g_state_context.entry_time = deskthang_time_get_ms();
+    g_state_context.last_update = deskthang_time_get_ms();
 }
 
 SystemState state_context_get_state(void) {
@@ -34,7 +34,7 @@ SystemState state_context_get_previous(void) {
 }
 
 uint32_t state_context_get_duration(void) {
-    return get_system_time() - g_state_context.entry_time;
+    return deskthang_time_get_ms() - g_state_context.entry_time;
 }
 
 uint32_t state_context_get_last_update(void) {

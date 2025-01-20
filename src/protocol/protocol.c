@@ -5,14 +5,19 @@
 #include "../system/time.h"
 
 // Error codes
-#define ERROR_INVALID_VERSION 1000
-#define ERROR_HARDWARE_FAILURE 1001
+#define ERROR_INVALID_VERSION 1
+#define ERROR_HARDWARE_FAILURE 2
 
 // Global protocol configuration
 static ProtocolConfig g_protocol_config;
 
 // Global error context
 static ErrorDetails g_error_context;
+
+// Add these function declarations
+static bool handle_sync_packet(const Packet *packet);
+static bool handle_command_packet(const Packet *packet);
+static bool handle_data_packet(const Packet *packet);
 
 // Initialize protocol
 bool protocol_init(const ProtocolConfig *config) {
@@ -75,7 +80,7 @@ void protocol_deinit(void) {
 void protocol_set_error(ErrorType type, const char *message) {
     g_error_context.type = type;
     g_error_context.source_state = state_machine_get_current();
-    g_error_context.timestamp = get_system_time();
+    g_error_context.timestamp = deskthang_time_get_ms();
     g_error_context.code = g_protocol_config.errors_seen++;
     
     if (message) {
@@ -163,5 +168,52 @@ bool protocol_validate_length(uint16_t length) {
 
 bool protocol_validate_checksum(uint32_t checksum, const uint8_t *data, uint16_t length) {
     // TODO: Implement CRC32 calculation
+    return true;
+}
+
+bool protocol_process_packet(const Packet *packet) {
+    if (!packet) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Null packet");
+        return false;
+    }
+
+    // Validate packet
+    if (!packet_validate(packet)) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Invalid packet");
+        return false;
+    }
+
+    // Process based on packet type
+    switch (packet->header.type) {
+        case PACKET_SYNC:
+            return handle_sync_packet(packet);
+        case PACKET_CMD:
+            return handle_command_packet(packet);
+        case PACKET_DATA:
+            return handle_data_packet(packet);
+        default:
+            protocol_set_error(ERROR_TYPE_PROTOCOL, "Unknown packet type");
+            return false;
+    }
+}
+
+// Add implementations
+static bool handle_sync_packet(const Packet *packet) {
+    // TODO: Implement sync packet handling
+    return true;
+}
+
+static bool handle_command_packet(const Packet *packet) {
+    // TODO: Implement command packet handling
+    return true;
+}
+
+static bool handle_data_packet(const Packet *packet) {
+    // TODO: Implement data packet handling
+    return true;
+}
+
+bool protocol_timing_valid(void) {
+    // TODO: Implement proper validation
     return true;
 }

@@ -229,7 +229,7 @@ bool state_machine_transition(SystemState next_state, StateCondition condition) 
     g_state_context.previous_state = g_state_context.current_state;
     g_state_context.current_state = next_state;
     g_state_context.last_condition = condition;
-    g_state_context.last_update = get_system_time();
+    g_state_context.last_update = deskthang_time_get_ms();
     
     // Log transition
     log_info("State transition: %s -> %s (Condition: %s)",
@@ -437,4 +437,17 @@ bool state_machine_handle_recovery(const ErrorDetails *error) {
     
     // ... recovery logic ...
     return true; // TODO: Implement actual recovery logic
+}
+
+bool state_machine_validate_state(SystemState state) {
+    return state >= STATE_HARDWARE_INIT && state <= STATE_ERROR;
+}
+
+bool state_machine_validate_transition(SystemState current, SystemState next, StateCondition condition) {
+    // Add your state transition validation logic here
+    // For now, allow all transitions but validate the states
+    if (!state_machine_validate_state(current) || !state_machine_validate_state(next)) {
+        return false;
+    }
+    return true;
 }

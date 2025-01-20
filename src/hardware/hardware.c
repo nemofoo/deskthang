@@ -1,6 +1,6 @@
 #include "hardware.h"
-#include "gpio.h"
-#include "spi.h"
+#include "deskthang_gpio.h"
+#include "deskthang_spi.h"
 #include "display.h"
 #include <string.h>
 
@@ -8,12 +8,12 @@
 static HardwareConfig hw_config;
 static bool is_initialized = false;
 
-bool hardware_init(HardwareConfig *config) {
+bool hardware_init(const HardwareConfig *config) {
     if (config == NULL) {
         return false;
     }
 
-    // Store configuration
+    // Store configuration in a non-const local copy
     memcpy(&hw_config, config, sizeof(HardwareConfig));
     
     // Initialize GPIO first
@@ -22,7 +22,16 @@ bool hardware_init(HardwareConfig *config) {
     }
     
     // Initialize SPI after GPIO
-    if (!display_spi_init(&hw_config)) {
+    DeskthangSPIConfig spi_config = {
+        .spi_port = config->spi_port,
+        .baud_rate = config->spi_baud,
+        .cs_pin = config->pins.cs,
+        .sck_pin = config->pins.sck,
+        .mosi_pin = config->pins.mosi,
+        .miso_pin = config->pins.miso
+    };
+    
+    if (!deskthang_spi_init(&spi_config)) {
         display_gpio_deinit();
         return false;
     }
@@ -40,7 +49,7 @@ void hardware_deinit(void) {
     }
     
     // Deinitialize in reverse order
-    display_spi_deinit();
+    deskthang_spi_deinit();
     display_gpio_deinit();
     
     // Clear state
@@ -78,4 +87,19 @@ bool hardware_reset(void) {
     // Perform full reset
     hardware_deinit();
     return hardware_init(&temp_config);
+}
+
+bool spi_is_configured(void) {
+    // TODO: Implement SPI configuration check
+    return true;
+}
+
+bool gpio_pins_configured(void) {
+    // TODO: Implement GPIO configuration check
+    return true;
+}
+
+bool timing_requirements_met(void) {
+    // TODO: Implement timing requirements check
+    return true;
 }

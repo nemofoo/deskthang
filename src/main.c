@@ -41,6 +41,12 @@ static const RecoveryConfig recovery_config = {
     .allow_reboot = false
 };
 
+// Add protocol configuration
+const ProtocolConfig protocol_config = {
+    .version = 1,
+    // ... other protocol configuration ...
+};
+
 // Recovery handlers
 static bool retry_handler(const ErrorDetails *error) {
     // Implement retry logic
@@ -60,9 +66,7 @@ static bool reinit_handler(const ErrorDetails *error) {
 // Initialize subsystems
 static bool init_subsystems(void) {
     // Initialize error handling first
-    if (!error_init()) {
-        return false;
-    }
+    error_init();
     
     // Initialize logging
     if (!logging_init()) {
@@ -95,7 +99,7 @@ static bool init_subsystems(void) {
     }
     
     // Initialize protocol handler
-    if (!protocol_init()) {
+    if (!protocol_init(&protocol_config)) {
         error_report(ERROR_TYPE_PROTOCOL, ERROR_SEVERITY_FATAL, 3, "Protocol initialization failed");
         return false;
     }

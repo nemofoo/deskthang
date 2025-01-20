@@ -1,5 +1,6 @@
 #include "error.h"
 #include "../system/time.h"
+#include "logging.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -23,7 +24,7 @@ void error_report(ErrorType type, ErrorSeverity severity, uint32_t code, const c
         g_last_error.type = ERROR_TYPE_SYSTEM;
         g_last_error.severity = ERROR_SEVERITY_ERROR;
         g_last_error.code = 6001; // System error: Invalid error code
-        g_last_error.timestamp = get_system_time();
+        g_last_error.timestamp = deskthang_time_get_ms();
         snprintf(g_last_error.message, sizeof(g_last_error.message),
                 "Invalid error code %u for type %s", code, error_type_to_string(type));
         g_last_error.recoverable = true;
@@ -34,7 +35,7 @@ void error_report(ErrorType type, ErrorSeverity severity, uint32_t code, const c
     g_last_error.type = type;
     g_last_error.severity = severity;
     g_last_error.code = code;
-    g_last_error.timestamp = get_system_time();
+    g_last_error.timestamp = deskthang_time_get_ms();
     
     // Copy message with bounds checking
     strncpy(g_last_error.message, message ? message : "Unknown error", sizeof(g_last_error.message) - 1);
@@ -108,4 +109,29 @@ const char *error_severity_to_string(ErrorSeverity severity) {
         default:
             return "UNKNOWN";
     }
+}
+
+void error_print_last(void) {
+    ErrorDetails *error = error_get_last();
+    if (!error) {
+        return;
+    }
+    logging_error(error);
+}
+
+bool error_requires_reset(const ErrorDetails *error) {
+    if (!error) {
+        return false;
+    }
+    return error->severity == ERROR_SEVERITY_FATAL;
+}
+
+void error_report_with_context(ErrorType type, const char* message, const char* context) {
+    // For now, just combine message and context into a single message
+    char combined_message[256];
+    snprintf(combined_message, sizeof(combined_message), "%s [Context: %s]", 
+             message ? message : "", context ? context : "");
+    
+    // Use the standard error reporting with default severity
+    error_report(type, ERROR_SEVERITY_ERROR, 0, combined_message);
 }

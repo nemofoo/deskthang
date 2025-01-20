@@ -1,8 +1,8 @@
+#include "../system/time.h"
 #include "display.h"
-#include "gpio.h"
-#include "spi.h"
+#include "deskthang_gpio.h"
+#include "deskthang_spi.h"
 #include <string.h>
-#include "pico/stdlib.h"
 
 // Static configuration
 static struct {
@@ -32,12 +32,8 @@ void GC9A01_set_chip_select(uint8_t val) {
     }
 }
 
-void GC9A01_delay(uint16_t ms) {
-    sleep_ms(ms);
-}
-
 void GC9A01_spi_tx(uint8_t *data, size_t len) {
-    display_spi_write(data, len);
+    deskthang_spi_write(data, len);
 }
 
 bool display_init(const HardwareConfig *hw_config_in, const DisplayConfig *disp_config) {
@@ -140,8 +136,8 @@ bool display_write_pixels(uint16_t x, uint16_t y, uint16_t width, uint16_t heigh
     };
     GC9A01_set_frame(frame);
 
-    // Write pixel data
-    GC9A01_write(data, width * height * 2); // 2 bytes per pixel (RGB565)
+    // Write pixel data using deskthang_spi_write
+    deskthang_spi_write(data, width * height * 2); // 2 bytes per pixel (RGB565)
 
     return true;
 }
@@ -180,4 +176,19 @@ const DisplayConfig* display_get_config(void) {
 
 bool display_is_initialized(void) {
     return display_state.initialized;
+}
+
+bool display_reset_complete(void) {
+    // TODO: Implement reset completion check
+    return true;
+}
+
+bool display_params_valid(void) {
+    // TODO: Implement parameter validation
+    return true;
+}
+
+bool display_responding(void) {
+    // TODO: Implement display response check
+    return true;
 }

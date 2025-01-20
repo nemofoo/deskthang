@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "deskthang_gpio.h"  // Update if it's using gpio.h
+#include "../system/time.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,7 +56,8 @@ struct GC9A01_frame {
 void GC9A01_init(void);
 void GC9A01_set_frame(struct GC9A01_frame frame);
 void GC9A01_write(const uint8_t *data, size_t len);
-void GC9A01_write_continue(uint8_t *data, size_t len);
+void GC9A01_write_continue(const uint8_t *data, size_t len);
+void GC9A01_write_data(const uint8_t *data, size_t len);
 
 #ifdef __cplusplus
 }

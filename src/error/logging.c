@@ -1,10 +1,8 @@
 #include "logging.h"
-#include <string.h>
 #include "../system/time.h"
-#include <stdio.h>
 #include "../hardware/serial.h"
-#include "../protocol/packet.h"
-#include "../protocol/protocol.h"
+#include <stdio.h>
+#include <stdarg.h>
 
 // Debug packet format
 #define DEBUG_PACKET_PREFIX "[LOG]"
@@ -13,35 +11,23 @@
 // Static configuration
 static LogConfig log_config = {0};
 
-static bool send_debug_packet(const char *module, const char *message, const char *context) {
-    if (!log_config.enabled) {
-        return false;
+void send_debug_packet(const char *module, const char *message, const char *context) {
+    if (!module || !message) {
+        return;
     }
 
-    // Create packet
-    Packet packet = {0};
-    packet.header.type = PACKET_DEBUG;
-    packet.header.sequence = 0;  // Debug packets don't use sequence numbers
+    char buffer[MAX_PACKET_SIZE];
+    int len = snprintf(buffer, sizeof(buffer),
+                "%s [%lu] %s: %s %s",
+                DEBUG_PACKET_PREFIX, 
+                deskthang_time_get_ms(), 
+                module, 
+                message, 
+                context ? context : "");
 
-    // Format debug message
-    char debug_message[DEBUG_PACKET_MAX_SIZE];
-    if (context) {
-        snprintf(debug_message, sizeof(debug_message), 
-                "%s [%u] [%s] %s | %s",
-                DEBUG_PACKET_PREFIX, time_get_ms(), module, message, context);
-    } else {
-        snprintf(debug_message, sizeof(debug_message),
-                "%s [%u] [%s] %s",
-                DEBUG_PACKET_PREFIX, time_get_ms(), module, message);
+    if (len > 0 && len < sizeof(buffer)) {
+        serial_write((uint8_t*)buffer, len);
     }
-
-    // Copy message to packet payload
-    size_t msg_len = strlen(debug_message) + 1;  // Include null terminator
-    memcpy(packet.payload, debug_message, msg_len);  // Changed from data to payload
-    packet.header.length = msg_len;
-
-    // Send packet
-    return serial_write((uint8_t*)&packet, sizeof(PacketHeader) + packet.header.length);
 }
 
 bool logging_init(void) {
@@ -92,4 +78,11 @@ void logging_recovery(const RecoveryResult *result) {
     logging_write_with_context("Recovery",
                               result->message,
                               context);
+}
+
+void log_info(const char* message) {
+    if (!message) {
+        return;
+    }
+    send_debug_packet("INFO", message, NULL);
 }

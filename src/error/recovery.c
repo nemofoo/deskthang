@@ -104,11 +104,11 @@ RecoveryResult recovery_attempt(const ErrorDetails *error) {
     
     // Track attempt
     g_recovery_stats.total_attempts++;
-    uint32_t start_time = get_system_time();
+    uint32_t start_time = deskthang_time_get_ms();
     
     // Execute recovery
     result.success = handler(error);
-    result.duration_ms = get_system_time() - start_time;
+    result.duration_ms = deskthang_time_get_ms() - start_time;
     result.attempts = 1;
     
     // Update stats

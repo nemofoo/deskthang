@@ -70,4 +70,8 @@ void command_set_status(bool success, const char *message);
 void command_print_status(void);
 const char *command_type_to_string(CommandType type);
 
+bool command_type_valid(void);
+bool command_params_valid(void);
+bool command_resources_available(void);
+
 #endif // COMMAND_H

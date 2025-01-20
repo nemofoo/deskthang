@@ -40,6 +40,7 @@ typedef struct {
 // Core error functions
 void error_init(void);
 void error_report(ErrorType type, ErrorSeverity severity, uint32_t code, const char *message);
+void error_report_with_context(ErrorType type, const char* message, const char* context);
 ErrorDetails *error_get_last(void);
 bool error_is_recoverable(const ErrorDetails *error);
 
@@ -47,5 +48,9 @@ bool error_is_recoverable(const ErrorDetails *error);
 bool error_code_in_range(ErrorType type, uint32_t code);
 const char *error_type_to_string(ErrorType type);
 const char *error_severity_to_string(ErrorSeverity severity);
+
+// Add these function declarations
+void error_print_last(void);
+bool error_requires_reset(const ErrorDetails *error);
 
 #endif // ERROR_H

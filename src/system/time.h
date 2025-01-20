@@ -3,11 +3,22 @@
 
 #include <stdint.h>
 
-// Get system time in milliseconds
-uint32_t get_system_time(void);
+/**
+ * Get current system time in milliseconds
+ * @return Current time in milliseconds
+ */
+uint32_t deskthang_time_get_ms(void);
 
-// Delay functions
-void delay_ms(uint32_t ms);
-void delay_us(uint32_t us);
+/**
+ * Delay execution for specified milliseconds
+ * @param ms Number of milliseconds to delay
+ */
+void deskthang_delay_ms(uint32_t ms);
+
+/**
+ * Delay execution for specified microseconds
+ * @param us Number of microseconds to delay
+ */
+void deskthang_delay_us(uint32_t us);
 
 #endif // SYSTEM_TIME_H

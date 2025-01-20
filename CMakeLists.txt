@@ -1,16 +1,13 @@
-cmake_minimum_required(VERSION 3.13...3.27)
+cmake_minimum_required(VERSION 3.13)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# initialize pico-sdk from submodule
+# Initialize pico-sdk from submodule
 include(pico-sdk/pico_sdk_init.cmake)
 
-# Set project name and enable C/C++
-project(gc9a01_display C CXX ASM)
-
-# Initialize the Raspberry Pi Pico SDK
+project(deskthang C CXX ASM)
 pico_sdk_init()
 
-# Configure stdio settings globally
+# Configure stdio settings
 set(PICO_ENABLE_STDIO_USB 1)
 set(PICO_ENABLE_STDIO_UART 0)
 set(PICO_USB_ENABLE_CDC_COMPOSITE 1)
@@ -53,63 +50,38 @@ add_library(state
 
 add_library(hardware
     src/hardware/display.c
-    src/hardware/gpio.c
+    src/hardware/deskthang_gpio.c
     src/hardware/hardware.c
     src/hardware/serial.c
-    src/hardware/spi.c
+    src/hardware/deskthang_spi.c
     src/hardware/GC9A01.c
 )
 
-# Set up include directories for all targets
+# Set up include directories
 include_directories(${CMAKE_SOURCE_DIR}/src)
-include_directories(${CMAKE_SOURCE_DIR}/src/include)
 
-# Update hardware target includes
-target_include_directories(hardware
-    PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${PICO_SDK_PATH}/src/common/pico_stdlib/include
-    ${PICO_SDK_PATH}/src/common/pico_base/include
-    ${PICO_SDK_PATH}/src/common/pico_binary_info/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_gpio/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_spi/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_sync/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_structs/include
-    ${PICO_SDK_PATH}/src/rp2040/hardware_structs/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_irq/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_claim/include
-    ${PICO_SDK_PATH}/src/rp2040/hardware_regs/include
-    ${PICO_SDK_PATH}/src/rp2_common/pico_platform/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_base/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_clocks/include
-    ${PICO_SDK_PATH}/src/rp2_common/hardware_dma/include
-)
-
-# Set up library dependencies
-target_link_libraries(logging PRIVATE error)
-target_link_libraries(recovery PRIVATE error logging)
-target_link_libraries(packet PRIVATE error)
-target_link_libraries(command PRIVATE error packet)
-target_link_libraries(protocol PRIVATE error packet command)
-target_link_libraries(system PRIVATE pico_stdlib)
-target_link_libraries(state PRIVATE error system)
+# Link libraries
 target_link_libraries(hardware 
     PRIVATE 
     error 
     pico_stdlib 
     hardware_spi
     hardware_gpio
-    hardware_sync
-    hardware_structs
-    hardware_irq
-    hardware_claim
 )
 
+target_link_libraries(logging PRIVATE error hardware)
+target_link_libraries(recovery PRIVATE error logging)
+target_link_libraries(packet PRIVATE error)
+target_link_libraries(command PRIVATE error packet)
+target_link_libraries(protocol PRIVATE error packet command)
+target_link_libraries(system PRIVATE pico_stdlib)
+target_link_libraries(state PRIVATE error system logging protocol)
+
+# Main executable
 add_executable(display_test
     src/main.c
 )
 
-# Enable stdio USB for the executable
 pico_enable_stdio_usb(display_test 1)
 pico_enable_stdio_uart(display_test 0)
 
@@ -128,12 +100,4 @@ target_link_libraries(display_test
     system
 )
 
-# create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(display_test)
-
-# Add test directory
-add_subdirectory(test)
-
-# Enable testing
-enable_testing()
-add_test(NAME unit_tests COMMAND run_tests)

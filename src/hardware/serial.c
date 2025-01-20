@@ -1,9 +1,9 @@
+#include "../system/time.h"
 #include "serial.h"
 #include "pico/stdlib.h"
 #include "pico/stdio.h"
 #include <stdio.h>      // For fwrite, fflush, stdout
 #include "pico/binary_info/code.h"  // For string operations
-#include "../system/time.h"
 #include "../error/logging.h"
 #include <string.h>     // For strncpy
 
@@ -45,11 +45,11 @@ bool serial_read(uint8_t *data, size_t len) {
         return false;
     }
 
-    uint32_t start = get_system_time();
+    uint32_t start = deskthang_time_get_ms();
     size_t total_read = 0;
 
     while (total_read < len) {
-        if (get_system_time() - start > serial_state.timeout_ms) {
+        if (deskthang_time_get_ms() - start > serial_state.timeout_ms) {
             return false;  // Timeout
         }
 
@@ -68,7 +68,7 @@ bool serial_write_debug(const char *module, const char *message) {
     }
 
     DebugPacket packet;
-    packet.timestamp = get_system_time();
+    packet.timestamp = deskthang_time_get_ms();
     strncpy(packet.module, module, sizeof(packet.module)-1);
     packet.module[sizeof(packet.module)-1] = '\0';
     strncpy(packet.message, message, sizeof(packet.message)-1);

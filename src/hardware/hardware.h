@@ -10,18 +10,19 @@ extern "C" {
 
 // Pin configuration structure
 typedef struct {
-    uint8_t mosi;      // SPI MOSI pin
-    uint8_t sck;       // SPI clock pin
-    uint8_t cs;        // Chip select pin
-    uint8_t dc;        // Data/command pin
-    uint8_t rst;       // Reset pin
+    uint8_t rst;     // Reset pin
+    uint8_t dc;      // Data/Command pin
+    uint8_t cs;      // Chip select pin
+    uint8_t sck;     // SPI clock pin
+    uint8_t mosi;    // SPI MOSI pin
+    uint8_t miso;    // Add MISO pin
 } PinConfig;
 
 // Hardware configuration structure
 typedef struct {
     // Core configuration
-    uint8_t spi_port;      // SPI port number
-    uint32_t spi_baud;     // Baud rate (Hz)
+    uint8_t spi_port;        // SPI port number (0 or 1)
+    uint32_t spi_baud;       // SPI baud rate
     
     // Pin assignments
     PinConfig pins;
@@ -43,7 +44,7 @@ typedef struct {
  * @param config Hardware configuration
  * @return true if initialization successful, false otherwise
  */
-bool hardware_init(HardwareConfig *config);
+bool hardware_init(const HardwareConfig *config);
 
 /**
  * Deinitialize hardware subsystems
@@ -73,6 +74,11 @@ bool hardware_is_display_ready(void);
  * @return true if reset successful, false otherwise
  */
 bool hardware_reset(void);
+
+// Add these declarations
+bool spi_is_configured(void);
+bool gpio_pins_configured(void);
+bool timing_requirements_met(void);
 
 #ifdef __cplusplus
 }

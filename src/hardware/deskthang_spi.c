@@ -1,7 +1,7 @@
-#include "spi.h"
-#include "pico/stdlib.h"
-#include "hardware/spi.h"  // Add this for spi_inst_t and SPI functions
-#include "hardware/gpio.h"  // Add this for GPIO functions
+#include "deskthang_spi.h"
+#include "hardware/spi.h"  // Pico SDK SPI
+#include "hardware/gpio.h" // Pico SDK GPIO
+#include "deskthang_gpio.h"
 #include "../error/logging.h"
 
 // Static configuration
@@ -15,13 +15,13 @@ static struct {
     bool initialized;
 } spi_state = {0};
 
-bool spi_device_init(const SPIConfig *config) {
+bool deskthang_spi_init(const DeskthangSPIConfig *config) {
     if (!config) {
         return false;
     }
 
-    // Select SPI instance
-    spi_state.spi = (config->spi_port == 0) ? spi0 : spi1;
+    // Select SPI instance based on port number
+    spi_state.spi = config->spi_port == 0 ? spi0 : spi1;
     spi_state.baud_rate = config->baud_rate;
     spi_state.cs_pin = config->cs_pin;
     spi_state.sck_pin = config->sck_pin;
@@ -32,26 +32,27 @@ bool spi_device_init(const SPIConfig *config) {
     gpio_set_function(spi_state.sck_pin, GPIO_FUNC_SPI);
     gpio_set_function(spi_state.mosi_pin, GPIO_FUNC_SPI);
     gpio_set_function(spi_state.miso_pin, GPIO_FUNC_SPI);
+    
+    // Initialize CS pin as GPIO
     gpio_init(spi_state.cs_pin);
     gpio_set_dir(spi_state.cs_pin, GPIO_OUT);
     gpio_put(spi_state.cs_pin, 1);  // CS high (inactive)
 
-    // Initialize SPI hardware
+    // Initialize SPI hardware with default format
     spi_init(spi_state.spi, spi_state.baud_rate);
     
-    // Configure SPI format (8 bits per transfer, SPI mode 0, MSB first)
-    uint actual = spi_set_baudrate(spi_state.spi, spi_state.baud_rate);
-    spi_set_format(spi_state.spi, 
-                   8,                    // 8 bits per transfer
-                   SPI_CPOL_0,          // Clock polarity
-                   SPI_CPHA_0,          // Clock phase
-                   SPI_MSB_FIRST);      // MSB first
+    // Set standard SPI format (mode 0, MSB first)
+    spi_set_format(spi_state.spi,
+                   8,       // 8 data bits
+                   0,       // CPOL = 0
+                   0,       // CPHA = 0
+                   SPI_MSB_FIRST);
 
     spi_state.initialized = true;
     return true;
 }
 
-void spi_device_deinit(void) {
+void deskthang_spi_deinit(void) {
     if (!spi_state.initialized) {
         return;
     }
@@ -64,7 +65,7 @@ void spi_device_deinit(void) {
     spi_state.initialized = false;
 }
 
-bool spi_write(const uint8_t *data, size_t len) {
+bool deskthang_spi_write(const uint8_t *data, size_t len) {
     if (!spi_state.initialized || !data) {
         return false;
     }
@@ -76,7 +77,7 @@ bool spi_write(const uint8_t *data, size_t len) {
     return bytes_written == len;
 }
 
-bool spi_read(uint8_t *data, size_t len) {
+bool deskthang_spi_read(uint8_t *data, size_t len) {
     if (!spi_state.initialized || !data) {
         return false;
     }
@@ -88,7 +89,7 @@ bool spi_read(uint8_t *data, size_t len) {
     return bytes_read == len;
 }
 
-bool spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, size_t len) {
+bool deskthang_spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, size_t len) {
     if (!spi_state.initialized || !tx_data || !rx_data) {
         return false;
     }
@@ -100,10 +101,10 @@ bool spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, size_t len) {
     return bytes_transferred == len;
 }
 
-void spi_chip_select(bool select) {
+void deskthang_spi_chip_select(bool select) {
     if (!spi_state.initialized) {
         return;
     }
 
     gpio_put(spi_state.cs_pin, !select); // CS is active low
-}
+} 
