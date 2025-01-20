@@ -8,10 +8,6 @@
 #include "../system/time.h"
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 // Hardware abstraction layer
 void GC9A01_set_reset(uint8_t val);
 void GC9A01_set_data_command(uint8_t val);
@@ -31,7 +27,6 @@ struct GC9A01_frame {
 };
 
 void GC9A01_init(void);
-void GC9A01_set_orientation(uint8_t orientation);
 void GC9A01_set_frame(struct GC9A01_frame frame);
 void GC9A01_write(const uint8_t *data, size_t len);
 void GC9A01_write_continue(const uint8_t *data, size_t len);
@@ -58,9 +53,5 @@ void GC9A01_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t c
 uint8_t GC9A01_read_status(void);
 uint8_t GC9A01_read_display_mode(void);
 uint8_t GC9A01_read_memory_access(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

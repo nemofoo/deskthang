@@ -5,6 +5,15 @@
 #include <stdio.h>
 #include "../error/logging.h"
 #include "packet.h"
+#include "../hardware/GC9A01.h"
+#include "../hardware/display.h"
+
+// External declarations
+extern const uint32_t crc32_table[256];
+
+// Forward declarations of static functions
+static bool transfer_process_image(void);
+static void transfer_cleanup(void);
 
 // Global transfer context
 static TransferContext g_transfer_context;
@@ -112,13 +121,84 @@ bool transfer_complete(void) {
     
     g_transfer_context.state = TRANSFER_STATE_COMPLETING;
     
-    // TODO: Process complete transfer buffer
+    // Process complete transfer buffer based on mode
+    bool success = false;
+    switch (g_transfer_context.mode) {
+        case TRANSFER_MODE_IMAGE:
+            success = transfer_process_image();
+            break;
+        case TRANSFER_MODE_FIRMWARE:
+            // Not implemented yet
+            success = false;
+            break;
+        case TRANSFER_MODE_CONFIG:
+            // Not implemented yet
+            success = false;
+            break;
+        default:
+            success = false;
+            break;
+    }
+    
+    if (!success) {
+        transfer_abort();
+        return false;
+    }
     
     // Update status
     g_transfer_status.active = false;
     g_transfer_status.progress = 1.0f;
     
+    // Cleanup
+    transfer_cleanup();
+    
     return true;
+}
+
+// Process image data and update display
+static bool transfer_process_image(void) {
+    if (!g_transfer_context.buffer || g_transfer_context.buffer_size == 0) {
+        return false;
+    }
+    
+    // Validate image dimensions
+    if (g_transfer_context.buffer_size != DISPLAY_WIDTH * DISPLAY_HEIGHT * 2) { // 2 bytes per pixel (RGB565)
+        return false;
+    }
+    
+    // Set up frame for full display update
+    struct GC9A01_frame frame = {
+        .start = {0, 0},
+        .end = {DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1}
+    };
+    GC9A01_set_frame(frame);
+    
+    // Write image data to display
+    // Buffer is already in RGB565 format, so we can write directly
+    GC9A01_write_data(g_transfer_context.buffer, g_transfer_context.buffer_size);
+    
+    return true;
+}
+
+// Cleanup after transfer completion
+static void transfer_cleanup(void) {
+    // Free transfer buffer
+    transfer_free_buffer();
+    
+    // Reset transfer context
+    g_transfer_context.mode = TRANSFER_MODE_NONE;
+    g_transfer_context.state = TRANSFER_STATE_IDLE;
+    g_transfer_context.bytes_received = 0;
+    g_transfer_context.bytes_expected = 0;
+    g_transfer_context.chunks_received = 0;
+    g_transfer_context.chunks_expected = 0;
+    g_transfer_context.error_count = 0;
+    g_transfer_context.retry_count = 0;
+    g_transfer_context.last_sequence = 0;
+    g_transfer_context.last_checksum = 0;
+    
+    // Clear status
+    memset(&g_transfer_status, 0, sizeof(TransferStatus));
 }
 
 // Abort transfer

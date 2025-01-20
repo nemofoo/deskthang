@@ -44,6 +44,10 @@ add_library(mock_protocol
     mocks/mock_protocol.c
 )
 
+add_library(mock_display
+    mocks/mock_display.c
+)
+
 # Create test executables
 add_executable(test_sanity
     protocol/test_sanity.c
@@ -76,6 +80,7 @@ target_link_libraries(test_transfer_validation
     mock_time
     mock_serial
     mock_protocol
+    mock_display
 )
 
 # Include directories
