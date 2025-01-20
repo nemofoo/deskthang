@@ -2,14 +2,14 @@
 
 ## Overview
 
-The serial communication module provides USB CDC (Communications Device Class) functionality for reliable data transfer between the host and device. The implementation wraps the TinyUSB CDC interface while respecting the packet protocol requirements.
+The serial communication module provides USB CDC (Communications Device Class) functionality for reliable data transfer between the host and device. The implementation uses the Raspberry Pi Pico SDK's stdio/USB functionality (`pico/stdlib.h` and `pico/stdio.h`), while respecting the packet protocol requirements.
 
 ## Key Features
 
 - Protocol-aware buffering and transfers
 - Timeout-based operations (using BASE_TIMEOUT_MS)
 - Automatic flush management
-- Simple debug packet transmission
+- Error logging and recovery
 - Clean initialization/deinitialization
 
 ## Buffer Management
@@ -17,7 +17,7 @@ The serial communication module provides USB CDC (Communications Device Class) f
 All buffer sizes are defined in protocol.h:
 - Maximum packet size: `MAX_PACKET_SIZE` (512 bytes)
 - Chunk size: `CHUNK_SIZE` (256 bytes)
-- Static RX buffer for incoming data
+- Uses Pico's stdio buffering for USB communication
 - Automatic flush after each chunk write
 
 ## Core Functions
@@ -25,31 +25,32 @@ All buffer sizes are defined in protocol.h:
 ### Initialization
 
 ```c
-bool serial_init(uint32_t baud_rate);
+bool serial_init(void);
 ```
-- Initializes USB CDC interface
-- Waits for USB connection
+- Initializes Pico stdio for USB (`stdio_init_all()`)
+- Sets up error handling and logging
 - Returns true when ready for communication
 
 ### Read Operations
 
 ```c
-bool serial_read_exact(uint8_t *buffer, uint16_t size, uint32_t timeout_ms);
-int16_t serial_read(uint8_t *buffer, uint16_t size, uint32_t timeout_ms);
+bool serial_read(uint8_t *data, size_t len);
 ```
-- `read_exact`: Blocks until exact number of bytes received or timeout (BASE_TIMEOUT_MS)
-- `read`: Returns immediately with available bytes up to requested size
-- Both implement timeout-based operation
+- Non-blocking read using `getchar_timeout_us`
+- Returns true if exact number of bytes read
+- Implements timeout-based operation (BASE_TIMEOUT_MS)
+- Reports underflow conditions through error logging
 
 ### Write Operations
 
 ```c
-bool serial_write_exact(const uint8_t *buffer, uint16_t size);
-int16_t serial_write(const uint8_t *buffer, uint16_t size);
+bool serial_write(const uint8_t *data, size_t len);
+bool serial_write_chunk(const uint8_t *data, size_t len);
 ```
-- `write_exact`: Ensures all bytes are written with automatic flush
-- `write`: Best-effort write of available buffer space
-- Implements chunked writing with `CHUNK_SIZE` boundaries
+- `write`: Handles large writes with automatic chunking
+- `write_chunk`: Writes a single chunk using `fwrite` to stdout
+- Both implement error logging for overflow and timeout conditions
+- Automatic retry with exponential backoff
 
 ### Buffer Control
 
@@ -62,43 +63,43 @@ void serial_clear(void);
 - `available`: Checks for pending received data
 - `clear`: Discards any unread received data
 
-## Debug Packet Integration
+## Error Handling
 
-The serial interface supports debug packet transmission through:
-- Simple enabled/disabled control
-- Protocol-formatted debug packets (using `MAX_PACKET_SIZE`)
-- Module and context information
-- Automatic timestamp inclusion
-- Non-blocking transmission
-- Immediate error logging
+The serial interface integrates with the system's error logging:
+- Overflow detection and reporting
+- Timeout monitoring
+- Retry management with backoff
+- Basic overflow statistics tracking:
+  - Overflow count
+  - Last overflow timestamp
+  - Current overflow state
 
 ## Usage Guidelines
 
 1. Initialize serial communication at system startup
-2. Use exact operations for protocol packets
-3. Use logging interface for debug messages
-4. Check enabled state before formatting debug packets
-5. Flush after critical writes
-6. Clear buffers when changing protocol states
+2. Monitor error conditions through logging
+3. Handle overflow conditions appropriately
+4. Implement retry logic for critical operations
+5. Clear buffers when changing protocol states
 
 ## Integration Points
 
-- Packet Protocol: Uses `MAX_PACKET_SIZE` and `CHUNK_SIZE` from protocol.h
-- Error System: Reports through logging interface
+- Error System: Reports through `logging_error_details`
 - State Machine: Supports protocol state transitions
 - Hardware Layer: Part of hardware abstraction
+- Debug System: Tracks basic overflow metrics
 
 ## Implementation Notes
 
-1. Polling interval of 1ms for non-blocking operations
-2. Automatic flush on `CHUNK_SIZE` boundaries
-3. Static buffer allocation using `MAX_PACKET_SIZE`
-4. Thread-safe volatile buffer pointers
+1. Non-blocking operations with timeout protection
+2. Automatic overflow detection and recovery
+3. Static buffer allocation with size validation
+4. Basic overflow tracking
 5. Proper USB connection handling
 
 ## Error Recovery
 
-- Uses protocol-defined retry counts (`MAX_RETRIES`)
-- Implements backoff delays (`MIN_RETRY_DELAY_MS` to `MAX_RETRY_DELAY_MS`)
-- Reports errors through logging system
-- Supports protocol state recovery
+- Implements exponential backoff for retries
+- Tracks overflow conditions and recovery
+- Provides detailed error context for debugging
+- Supports automatic recovery for transient errors

@@ -116,7 +116,7 @@ void error_print_last(void) {
     if (!error) {
         return;
     }
-    logging_error(error);
+    logging_error_details(error);
 }
 
 bool error_requires_reset(const ErrorDetails *error) {

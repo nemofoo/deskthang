@@ -4,9 +4,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "../error/logging.h"
+#include "../error/error.h"
 #include "packet.h"
 #include "../hardware/GC9A01.h"
 #include "../hardware/display.h"
+#include "../common/deskthang_constants.h"
 
 // External declarations
 extern const uint32_t crc32_table[256];
@@ -19,6 +21,9 @@ static void transfer_cleanup(void);
 static TransferContext g_transfer_context;
 static TransferStatus g_transfer_status;
 static bool transfer_initialized = false;
+
+// Helper macro
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
 
 // Initialize transfer system
 bool transfer_init(void) {
@@ -157,12 +162,24 @@ bool transfer_complete(void) {
 
 // Process image data and update display
 static bool transfer_process_image(void) {
+    // Validate buffer and context
     if (!g_transfer_context.buffer || g_transfer_context.buffer_size == 0) {
+        logging_write("Transfer", "Invalid buffer or size");
         return false;
     }
     
-    // Validate image dimensions
-    if (g_transfer_context.buffer_size != DISPLAY_WIDTH * DISPLAY_HEIGHT * 2) { // 2 bytes per pixel (RGB565)
+    const size_t expected_size = DISPLAY_WIDTH * DISPLAY_HEIGHT * 2; // 2 bytes per pixel (RGB565)
+    if (g_transfer_context.buffer_size != expected_size) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Invalid buffer size: got %u, expected %u", 
+                 g_transfer_context.buffer_size, expected_size);
+        logging_write("Transfer", msg);
+        return false;
+    }
+    
+    // Ensure display is ready
+    if (!display_ready()) {
+        logging_write("Transfer", "Display not ready for update");
         return false;
     }
     
@@ -173,10 +190,31 @@ static bool transfer_process_image(void) {
     };
     GC9A01_set_frame(frame);
     
-    // Write image data to display
-    // Buffer is already in RGB565 format, so we can write directly
-    GC9A01_write_data(g_transfer_context.buffer, g_transfer_context.buffer_size);
+    // Write image data directly to display
+    uint32_t bytes_written = 0;
+    while (bytes_written < g_transfer_context.buffer_size) {
+        uint32_t chunk_size = MIN(CHUNK_SIZE, g_transfer_context.buffer_size - bytes_written);
+        if (!display_write_data(g_transfer_context.buffer + bytes_written, chunk_size)) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Display write failed at offset %u", bytes_written);
+            logging_write("Transfer", msg);
+            return false;
+        }
+        bytes_written += chunk_size;
+    }
     
+    // Finalize display update
+    if (!display_end_write()) {
+        logging_write("Transfer", "Display failed to process update");
+        return false;
+    }
+    
+    // Clear the buffer since we're done with it
+    memset(g_transfer_context.buffer, 0, g_transfer_context.buffer_size);
+    
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Image transfer complete: %u bytes written", bytes_written);
+    logging_write("Transfer", msg);
     return true;
 }
 

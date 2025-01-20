@@ -65,7 +65,7 @@ bool serial_write(const uint8_t *data, size_t len) {
         };
         strncpy(error.message, "Buffer overflow detected", ERROR_MESSAGE_SIZE - 1);
         snprintf(error.context, ERROR_CONTEXT_SIZE - 1, "Buffer size: %d, Write size: %zu", CHUNK_SIZE, len);
-        logging_error(&error);
+        logging_error_details(&error);
         
         // Attempt recovery by flushing
         serial_flush();
@@ -89,10 +89,9 @@ bool serial_write(const uint8_t *data, size_t len) {
             retry_count++;
             if (retry_count < max_retries) {
                 // Log retry attempt
-                char context[32];
-                snprintf(context, sizeof(context), "Retry %u/%u", 
-                    (unsigned)retry_count + 1, (unsigned)max_retries);
-                logging_write_with_context("Serial", "Retrying write", context);
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Retrying write (attempt %u/%u)", retry_count + 1, max_retries);
+                logging_write("Serial", msg);
                 
                 // Flush and wait before retry
                 serial_flush();
@@ -144,7 +143,7 @@ bool serial_write_chunk(const uint8_t *data, size_t len) {
             strncpy(error.message, "Write timeout", ERROR_MESSAGE_SIZE - 1);
             error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
             error.context[0] = '\0';
-            logging_error(&error);
+            logging_error_details(&error);
             return false;
         }
 
@@ -187,7 +186,7 @@ bool serial_read(uint8_t *data, size_t len) {
                 strncpy(error.message, "Incomplete read detected", ERROR_MESSAGE_SIZE - 1);
                 error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
                 snprintf(error.context, ERROR_CONTEXT_SIZE - 1, "Expected %zu bytes, got %zu", len, total_read);
-                logging_error(&error);
+                logging_error_details(&error);
             }
             return false;  // Timeout
         }

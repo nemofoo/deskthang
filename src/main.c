@@ -238,11 +238,11 @@ int main() {
                 if (error && error_is_recoverable(error)) {
                     RecoveryResult result = recovery_attempt(error);
                     // Log recovery attempt
-                    char context[MESSAGE_CONTEXT_SIZE];
-                    snprintf(context, sizeof(context), "Duration: %ums, Attempts: %u",
-                            result.duration_ms, result.attempts);
-                    logging_write_with_context("Recovery", result.message, context);
-                    printf("Recovery attempt: %s (%s)\n", result.message, context);
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "%s (Duration: %ums, Attempts: %u)", 
+                             result.message, result.duration_ms, result.attempts);
+                    logging_write("Recovery", msg);
+                    printf("Recovery attempt: %s\n", msg);
                     fflush(stdout);
                 }
             }
@@ -259,10 +259,11 @@ int main() {
             if (error_is_recoverable(error)) {
                 RecoveryResult result = recovery_attempt(error);
                 // Log recovery attempt
-                char context[MESSAGE_CONTEXT_SIZE];
-                snprintf(context, sizeof(context), "Duration: %ums, Attempts: %u",
-                        result.duration_ms, result.attempts);
-                printf("Recovery attempt: %s (%s)\n", result.message, context);
+                char msg[64];
+                snprintf(msg, sizeof(msg), "%s (Duration: %ums, Attempts: %u)", 
+                         result.message, result.duration_ms, result.attempts);
+                logging_write("Recovery", msg);
+                printf("Recovery attempt: %s\n", msg);
                 fflush(stdout);
             }
             gpio_put(LED_PIN, led_state);  // Return to heartbeat state

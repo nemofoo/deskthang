@@ -317,3 +317,35 @@ bool display_buffer_available(void) {
 void display_update_buffer_usage(size_t bytes_used) {
     buffer_used = bytes_used;
 }
+
+// Display status functions
+bool display_ready(void) {
+    uint8_t status = GC9A01_read_status();
+    return (status & GC9A01_STATUS_READY) != 0;
+}
+
+// Display write functions
+bool display_write_data(const uint8_t *data, uint32_t len) {
+    if (!data || len == 0) {
+        return false;
+    }
+
+    GC9A01_write_data(data, len);
+    
+    // Check status after write
+    uint8_t status = GC9A01_read_status();
+    return (status & GC9A01_STATUS_ERROR) == 0;
+}
+
+bool display_end_write(void) {
+    // Wait for display to be ready
+    uint16_t timeout = 1000; // 1 second timeout
+    while (timeout-- > 0) {
+        uint8_t status = GC9A01_read_status();
+        if (status & GC9A01_STATUS_READY) {
+            return true;
+        }
+        deskthang_delay_ms(1);
+    }
+    return false;
+}

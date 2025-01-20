@@ -195,40 +195,38 @@ bool packet_parse(const uint8_t *data, uint16_t length, Packet *packet) {
 // Validate packet
 bool packet_validate(const Packet *packet) {
     if (!packet) {
-        logging_write("Protocol", "Null packet received");
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Invalid packet type (Type: %u, Seq: %u)", 
+                 packet->header.type, packet->header.sequence);
+        logging_write("Protocol", msg);
         return false;
     }
-    
-    // Validate packet type
+
+    char msg[64];  // Moved declaration before switch
     switch (packet->header.type) {
-        case PACKET_TYPE_SYNC:
-        case PACKET_TYPE_SYNC_ACK:
-        case PACKET_TYPE_CMD:
-        case PACKET_TYPE_DATA:
         case PACKET_TYPE_ACK:
         case PACKET_TYPE_NACK:
-        case PACKET_TYPE_DEBUG:
+        case PACKET_TYPE_DATA:
+        case PACKET_TYPE_CMD:
             break;
         default:
-            logging_write_with_context("Protocol", 
-                                     "Invalid packet type",
-                                     packet_type_to_string(packet->header.type));
+            snprintf(msg, sizeof(msg), "Invalid packet type (Type: %u, Seq: %u)", 
+                     packet->header.type, packet->header.sequence);
+            logging_write("Protocol", msg);
             return false;
     }
-    
-    // Validate protocol version (for SYNC packets)
-    if (packet->header.type == PACKET_TYPE_SYNC) {
+
+    // Version check for command packets
+    if (packet->header.type == PACKET_TYPE_CMD) {
         uint8_t version = packet->payload[0];
         if (version != PROTOCOL_VERSION) {
-            char context[64];
-            snprintf(context, sizeof(context), 
-                    "Expected v%d, got v%d", 
-                    PROTOCOL_VERSION, version);
-            logging_write_with_context("Protocol", "Version mismatch", context);
+            snprintf(msg, sizeof(msg), "Version mismatch (Got: %u, Expected: %u)", 
+                     version, PROTOCOL_VERSION);
+            logging_write("Protocol", msg);
             return false;
         }
     }
-    
+
     // Validate length
     if (packet->header.length > MAX_PACKET_SIZE) {
         return false;
@@ -368,7 +366,9 @@ bool packet_get_transmission_stats(PacketTransmissionStats* stats) {
 // Enhanced packet transmission with verification
 bool packet_transmit(const Packet* packet) {
     if (!packet) {
-        logging_write("Protocol", "Null packet in transmission");
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Type: %u, Seq: %u", packet->header.type, packet->header.sequence);
+        logging_write("Protocol", msg);
         return false;
     }
     
@@ -381,10 +381,10 @@ bool packet_transmit(const Packet* packet) {
     while (!success && retry_count < max_retries) {
         // First send header with framing
         if (!transmit_framed_data((const uint8_t*)&packet->header, HEADER_SIZE)) {
-            char context[32];
-            snprintf(context, sizeof(context), "Retry %u/%u", 
-                (unsigned)retry_count + 1, (unsigned)max_retries);
-            logging_write_with_context("Protocol", "Header transmission failed", context);
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Header transmission failed (Retry %u/%u)", 
+                     retry_count + 1, max_retries);
+            logging_write("Protocol", msg);
             retry_count++;
             serial_flush();
             deskthang_delay_ms(5 * retry_count);  // Exponential backoff
@@ -394,10 +394,10 @@ bool packet_transmit(const Packet* packet) {
         // Then send payload if present
         if (packet->header.length > 0) {
             if (!transmit_framed_data(packet->payload, packet->header.length)) {
-                char context[32];
-                snprintf(context, sizeof(context), "Retry %u/%u", 
-                    (unsigned)retry_count + 1, (unsigned)max_retries);
-                logging_write_with_context("Protocol", "Payload transmission failed", context);
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Payload transmission failed (Retry %u/%u)", 
+                         retry_count + 1, max_retries);
+                logging_write("Protocol", msg);
                 retry_count++;
                 serial_flush();
                 deskthang_delay_ms(5 * retry_count);  // Exponential backoff
@@ -429,7 +429,7 @@ bool packet_transmit(const Packet* packet) {
                 "Type: %s, Size: %u", 
                 packet_type_to_string(packet->header.type), 
                 total_size);
-        logging_error(&error);
+        logging_error_details(&error);
     }
     
     return success;
@@ -616,14 +616,11 @@ bool packet_handle_nack(const Packet *packet) {
     }
     
     const ErrorDetails *error = (const ErrorDetails *)packet->payload;
-    char context[64];
+    char msg[64];
     
     // Log the NACK details
-    snprintf(context, sizeof(context), "Flags: 0x%02X, Type: %s", 
-             error->code,
-             packet_type_to_string(error->type));
-             
-    logging_write_with_context("Protocol", "Received NACK", context);
+    snprintf(msg, sizeof(msg), "Received NACK (Seq: %u)", packet->header.sequence);
+    logging_write("Protocol", msg);
     
     // Create detailed error report
     ErrorDetails detailed_error = {
@@ -638,7 +635,7 @@ bool packet_handle_nack(const Packet *packet) {
     strncpy(detailed_error.message, "NACK received", ERROR_MESSAGE_SIZE - 1);
     strncpy(detailed_error.context, error->context, ERROR_CONTEXT_SIZE - 1);
     
-    logging_error(&detailed_error);
+    logging_error_details(&detailed_error);
     
     return true;
 }

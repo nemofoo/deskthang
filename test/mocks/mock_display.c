@@ -1,44 +1,48 @@
-#include "mock_display.h"
+#include "../../src/hardware/display.h"
+#include "../../src/hardware/GC9A01.h"
+#include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
-// Mock state
-static struct {
-    struct GC9A01_frame last_frame;
-    uint8_t last_data[240*240*2];  // Max size for full screen RGB565
-    size_t last_data_len;
-    bool frame_set;
-    bool data_written;
-} mock_state;
-
-void mock_display_reset(void) {
-    memset(&mock_state, 0, sizeof(mock_state));
-}
+// Mock display buffer
+static uint8_t display_buffer[DISPLAY_WIDTH * DISPLAY_HEIGHT * 2];  // RGB565 format
+static bool display_initialized = true;
+static struct GC9A01_frame last_frame;
 
 void GC9A01_set_frame(struct GC9A01_frame frame) {
-    mock_state.last_frame = frame;
-    mock_state.frame_set = true;
+    last_frame = frame;
 }
 
-void GC9A01_write_data(const uint8_t *data, size_t len) {
-    if (len <= sizeof(mock_state.last_data)) {
-        memcpy(mock_state.last_data, data, len);
-        mock_state.last_data_len = len;
-        mock_state.data_written = true;
-    }
+bool display_ready(void) {
+    return display_initialized;
 }
 
-bool mock_display_verify_frame(struct GC9A01_frame expected_frame) {
-    if (!mock_state.frame_set) {
+bool display_write_data(const uint8_t *data, uint32_t len) {
+    if (!data || len > sizeof(display_buffer)) {
         return false;
     }
-    
-    return memcmp(&mock_state.last_frame, &expected_frame, sizeof(struct GC9A01_frame)) == 0;
+    memcpy(display_buffer, data, len);
+    return true;
 }
 
-bool mock_display_verify_data(const uint8_t *expected_data, size_t len) {
-    if (!mock_state.data_written || mock_state.last_data_len != len) {
-        return false;
-    }
-    
-    return memcmp(mock_state.last_data, expected_data, len) == 0;
+bool display_end_write(void) {
+    return true;
+}
+
+// Mock control functions
+void mock_display_set_ready(bool ready) {
+    display_initialized = ready;
+}
+
+// Test helper functions
+const uint8_t* mock_display_get_buffer(void) {
+    return display_buffer;
+}
+
+void mock_display_clear_buffer(void) {
+    memset(display_buffer, 0, sizeof(display_buffer));
+}
+
+const struct GC9A01_frame* mock_display_get_last_frame(void) {
+    return &last_frame;
 } 

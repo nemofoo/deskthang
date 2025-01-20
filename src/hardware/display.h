@@ -169,6 +169,13 @@ bool display_buffer_available(void);
 void display_update(void);
 void display_set_pixel(uint16_t x, uint16_t y, uint16_t color);
 
+// Display status functions
+bool display_ready(void);
+
+// Display write functions
+bool display_write_data(const uint8_t *data, uint32_t len);
+bool display_end_write(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -28,6 +28,10 @@ add_library(logging
 )
 
 # Create mock libraries
+add_library(mock_display
+    mocks/mock_display.c
+)
+
 add_library(mock_packet
     mocks/mock_packet.c
 )
@@ -42,10 +46,6 @@ add_library(mock_serial
 
 add_library(mock_protocol
     mocks/mock_protocol.c
-)
-
-add_library(mock_display
-    mocks/mock_display.c
 )
 
 # Create test executables
