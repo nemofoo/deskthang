@@ -7,6 +7,9 @@ include(pico-sdk/pico_sdk_init.cmake)
 project(deskthang C CXX ASM)
 pico_sdk_init()
 
+# Enable testing
+enable_testing()
+
 # Configure stdio settings
 set(PICO_ENABLE_STDIO_USB 1)
 set(PICO_ENABLE_STDIO_UART 0)
@@ -60,6 +63,9 @@ add_library(hardware
 add_library(deskthang_debug
     src/debug/debug.c
 )
+
+# Add test directory
+add_subdirectory(test)
 
 # Set up include directories
 include_directories(${CMAKE_SOURCE_DIR}/src)

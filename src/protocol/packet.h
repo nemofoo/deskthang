@@ -5,9 +5,20 @@
 #include <stdbool.h>
 #include "../common/deskthang_constants.h"
 #include "../error/logging.h"
+#include "../error/error.h"
+#include "../system/time.h"  // For deskthang_delay_ms
 
 // Add packet-specific constants to deskthang_constants.h first
 // Then update packet.h to use them
+
+// Protocol error codes (2000-2999 range)
+#define ERROR_PROTOCOL_TRANSMISSION 2001
+#define ERROR_PROTOCOL_INVALID_TYPE 2002
+#define ERROR_PROTOCOL_VERSION_MISMATCH 2003
+#define ERROR_PROTOCOL_CHECKSUM 2004
+#define ERROR_PROTOCOL_SEQUENCE 2005
+#define ERROR_PROTOCOL_OVERFLOW 2006
+#define ERROR_PROTOCOL_NACK_RECEIVED 2007
 
 typedef enum {
     PACKET_TYPE_SYNC = PACKET_SYNC_BYTE,
@@ -34,6 +45,9 @@ typedef struct {
     uint32_t checksum;       // CRC32 checksum
 } __attribute__((packed)) PacketHeader;
 
+// Forward declarations
+bool packet_validate_header(const PacketHeader *header);
+
 /**
  * Complete packet structure.
  * Contains a fixed-size header followed by variable-length payload.
@@ -51,6 +65,13 @@ typedef struct {
     char module[DEBUG_MODULE_NAME_MAX];
     char message[DEBUG_MESSAGE_MAX];
 } __attribute__((packed)) DebugPayload;
+
+// NACK payload structure
+typedef struct {
+    uint8_t error_flags;
+    uint8_t original_type;
+    uint8_t context[14];  // Additional error context
+} NackPayload;
 
 // Packet buffer management
 bool packet_buffer_init(void);
@@ -85,12 +106,37 @@ bool packet_verify_checksum(const Packet *packet);
 uint8_t packet_next_sequence(void);
 bool packet_validate_sequence(uint8_t sequence);
 
-// Packet transmission
-bool packet_transmit(const Packet *packet);
-bool packet_receive(Packet *packet);
+// Transmission statistics tracking
+typedef struct {
+    uint32_t packets_sent;        // Total packets successfully sent
+    uint32_t packets_failed;      // Total packets that failed to send
+    uint32_t bytes_transmitted;   // Total bytes transmitted
+    uint32_t last_transmit_time; // Timestamp of last transmission
+    uint32_t transmission_errors; // Count of transmission errors
+} PacketTransmissionStats;
+
+// Transmission functions
+bool packet_transmit(const Packet* packet);
+bool packet_receive(Packet* packet);
+bool packet_get_transmission_stats(PacketTransmissionStats* stats);
 
 // Debug support
 void packet_print(const Packet *packet);
 const char *packet_type_to_string(PacketType type);
+
+/**
+ * Create a NACK packet with error details
+ * @param packet Pointer to packet structure to fill
+ * @param sequence Sequence number to use
+ * @return true if successful, false otherwise
+ */
+bool packet_create_nack(Packet *packet, uint8_t sequence);
+
+/**
+ * Handle a received NACK packet
+ * @param packet Pointer to the received NACK packet
+ * @return true if handled successfully, false otherwise
+ */
+bool packet_handle_nack(const Packet *packet);
 
 #endif // PACKET_H

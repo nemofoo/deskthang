@@ -10,13 +10,16 @@
 #define SERIAL_WRITE_TIMEOUT_MS 100
 
 // Error codes
-#define ERROR_SERIAL_OVERFLOW 1001
-#define ERROR_SERIAL_TIMEOUT  1002
+#define ERROR_SERIAL_OVERFLOW  1001
+#define ERROR_SERIAL_TIMEOUT   1002
+#define ERROR_SERIAL_UNDERFLOW 1003
 
 // Statistics structure
 typedef struct {
     uint32_t overflow_count;      // Number of overflow events
+    uint32_t underflow_count;     // Number of underflow events
     uint32_t last_overflow_time;  // Timestamp of last overflow
+    uint32_t last_underflow_time; // Timestamp of last underflow
     bool in_overflow;             // Currently in overflow state
 } SerialStats;
 

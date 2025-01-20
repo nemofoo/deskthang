@@ -10,6 +10,11 @@
 // Protocol Version
 #define PROTOCOL_VERSION 1
 
+// Frame Markers
+#define FRAME_START      0x7E
+#define FRAME_END       0x7F
+#define FRAME_ESCAPE    0x7D
+
 // Buffer Sizes
 #define MAX_PACKET_SIZE 512  // Maximum size of a complete packet including header
 #define CHUNK_SIZE 256      // Size of individual data transfer chunks
@@ -302,5 +307,14 @@
 #define MESSAGE_MODULE_SIZE   32
 #define MESSAGE_TEXT_SIZE     256
 #define MESSAGE_CONTEXT_SIZE  128
+
+// NACK Error Flags
+#define NACK_ERROR_INVALID_TYPE     0x01
+#define NACK_ERROR_VERSION_MISMATCH 0x02
+#define NACK_ERROR_CHECKSUM         0x04
+#define NACK_ERROR_SEQUENCE         0x08
+#define NACK_ERROR_LENGTH           0x10
+#define NACK_ERROR_OVERFLOW         0x20
+#define NACK_ERROR_TRANSMISSION     0x40
 
 #endif // DESKTHANG_CONSTANTS_H 

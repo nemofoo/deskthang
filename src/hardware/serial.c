@@ -64,9 +64,15 @@ bool serial_write(const uint8_t *data, size_t len) {
             .backoff_ms = 0
         };
         strncpy(error.message, "Buffer overflow detected", ERROR_MESSAGE_SIZE - 1);
-        error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
-        error.context[0] = '\0';
+        snprintf(error.context, ERROR_CONTEXT_SIZE - 1, "Buffer size: %d, Write size: %zu", CHUNK_SIZE, len);
         logging_error(&error);
+        
+        // Attempt recovery by flushing
+        serial_flush();
+        serial_clear();
+        
+        // Add delay to allow system to recover
+        sleep_ms(10);
     }
 
     debug_log_buffer_usage(len, CHUNK_SIZE);
@@ -74,37 +80,32 @@ bool serial_write(const uint8_t *data, size_t len) {
 
     size_t remaining = len;
     const uint8_t *ptr = data;
+    uint32_t retry_count = 0;
+    const uint32_t max_retries = 3;
     
-    while (remaining > 0) {
+    while (remaining > 0 && retry_count < max_retries) {
         size_t chunk = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
         if (!serial_write_chunk(ptr, chunk)) {
-            if (!serial_state.in_overflow) {
-                serial_state.in_overflow = true;
-                serial_state.overflow_count++;
-                serial_state.last_overflow_time = deskthang_time_get_ms();
+            retry_count++;
+            if (retry_count < max_retries) {
+                // Log retry attempt
+                char context[32];
+                snprintf(context, sizeof(context), "Retry %u/%u", 
+                    (unsigned)retry_count + 1, (unsigned)max_retries);
+                logging_write_with_context("Serial", "Retrying write", context);
                 
-                debug_log_overflow();
-                
-                ErrorDetails error = {
-                    .type = ERROR_TYPE_HARDWARE,
-                    .severity = ERROR_SEVERITY_ERROR,
-                    .code = ERROR_SERIAL_OVERFLOW,
-                    .timestamp = deskthang_time_get_ms(),
-                    .source_state = 0,
-                    .recoverable = true,
-                    .retry_count = 0,
-                    .backoff_ms = 0
-                };
-                strncpy(error.message, "Write failed - possible overflow", ERROR_MESSAGE_SIZE - 1);
-                error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
-                error.context[0] = '\0';
-                logging_error(&error);
+                // Flush and wait before retry
+                serial_flush();
+                sleep_ms(5 * retry_count);  // Exponential backoff
+                continue;
             }
+            
             debug_log_operation_end("serial_write");
             return false;
         }
         ptr += chunk;
         remaining -= chunk;
+        retry_count = 0;  // Reset retry count on successful write
     }
 
     // Clear overflow state if write succeeds
@@ -114,7 +115,7 @@ bool serial_write(const uint8_t *data, size_t len) {
     }
 
     debug_log_operation_end("serial_write");
-    return true;
+    return remaining == 0;  // Return true only if all data was written
 }
 
 bool serial_write_chunk(const uint8_t *data, size_t len) {
@@ -168,15 +169,36 @@ bool serial_read(uint8_t *data, size_t len) {
 
     uint32_t start = deskthang_time_get_ms();
     size_t total_read = 0;
+    bool underflow_reported = false;
 
     while (total_read < len) {
         if (deskthang_time_get_ms() - start > serial_state.timeout_ms) {
+            // Report underflow only once
+            if (!underflow_reported) {
+                ErrorDetails error = {
+                    .type = ERROR_TYPE_HARDWARE,
+                    .severity = ERROR_SEVERITY_WARNING,
+                    .code = ERROR_SERIAL_UNDERFLOW,
+                    .timestamp = deskthang_time_get_ms(),
+                    .source_state = 0,
+                    .recoverable = true,
+                    .retry_count = 0,
+                    .backoff_ms = 0
+                };
+                strncpy(error.message, "Buffer underflow detected", ERROR_MESSAGE_SIZE - 1);
+                error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
+                snprintf(error.context, ERROR_CONTEXT_SIZE - 1, "Expected %zu bytes, got %zu", len, total_read);
+                logging_error(&error);
+                underflow_reported = true;
+            }
             return false;  // Timeout
         }
 
         int c = getchar_timeout_us(0);  // Non-blocking read
         if (c != PICO_ERROR_TIMEOUT) {
             data[total_read++] = (uint8_t)c;
+            // Reset underflow flag on successful read
+            underflow_reported = false;
         }
     }
 

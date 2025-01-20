@@ -1,6 +1,7 @@
 # Build directory
 .cache/
 build/
+build_test/
 
 # CMake files
 CMakeCache.txt
