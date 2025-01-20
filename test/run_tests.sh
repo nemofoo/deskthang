@@ -11,5 +11,9 @@ cd build_test
 cmake -DCMAKE_BUILD_TYPE=Debug ../test
 make
 
-# Run tests
-./test_sanity 
+# Run all tests
+echo "Running sanity test..."
+./test_sanity
+
+echo -e "\nRunning packet tests..."
+./test_packet 

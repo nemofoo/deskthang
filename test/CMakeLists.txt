@@ -7,6 +7,8 @@ if(CMAKE_CROSSCOMPILING)
     return()
 endif()
 
+project(deskthang_tests C)
+
 # Add Unity test framework
 include(FetchContent)
 FetchContent_Declare(
@@ -16,14 +18,28 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(unity)
 
-# Create test executable
+# Create mock libraries
+add_library(mock_packet
+    mocks/mock_packet.c
+)
+
+# Create test executables
 add_executable(test_sanity
     protocol/test_sanity.c
 )
 
-# Link Unity
+add_executable(test_packet
+    protocol/test_packet.c
+)
+
+# Link Unity and project libraries
 target_link_libraries(test_sanity
     unity
+)
+
+target_link_libraries(test_packet
+    unity
+    mock_packet
 )
 
 # Include directories
@@ -32,5 +48,12 @@ target_include_directories(test_sanity PRIVATE
     ${unity_SOURCE_DIR}/src
 )
 
-# Add test
-add_test(NAME test_sanity COMMAND test_sanity) 
+target_include_directories(test_packet PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${unity_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Add tests
+add_test(NAME test_sanity COMMAND test_sanity)
+add_test(NAME test_packet COMMAND test_packet) 

@@ -108,24 +108,71 @@ static bool init_subsystems(void) {
 }
 
 int main() {
-    // Initialize stdio
+    // Initialize GPIO for LED
+    const uint LED_PIN = 25;
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+    gpio_put(LED_PIN, 1);  // Turn on LED to show we're starting
+    
+    // Initialize stdio first, before any printing
     stdio_init_all();
-    sleep_ms(2 * BASE_TIMEOUT_MS); // Wait for USB CDC with protocol-defined timeout
+    
+    // Wait for USB CDC to be ready, blink LED while waiting
+    for(int i = 0; i < 6; i++) {  // 3 seconds total
+        gpio_put(LED_PIN, i % 2);  // Toggle LED every 500ms
+        sleep_ms(500);
+    }
+    
+    // Now start printing
+    printf("\n\n\n=== Deskthang Debug Output ===\n");
+    fflush(stdout);
+    printf("USB CDC should be ready now\n");
+    fflush(stdout);
     
     // Initialize all subsystems
+    printf("Initializing subsystems...\n");
+    fflush(stdout);
+    gpio_put(LED_PIN, 1);  // LED on during initialization
+    
     if (!init_subsystems()) {
         // Handle initialization failure
         error_print_last();
+        printf("Initialization failed!\n");
+        fflush(stdout);
+        while(1) {
+            gpio_put(LED_PIN, 1);  // Fast blink to indicate failure
+            sleep_ms(100);
+            gpio_put(LED_PIN, 0);
+            sleep_ms(100);
+        }
         return 1;
     }
     
     logging_write("Main", "System initialized successfully");
+    printf("System initialized successfully!\n");
+    fflush(stdout);
+    
+    uint32_t heartbeat = 0;
+    bool led_state = false;
     
     // Main event loop
     while (1) {
+        // Heartbeat every second
+        if (heartbeat % 1000 == 0) {
+            led_state = !led_state;  // Toggle LED with heartbeat
+            gpio_put(LED_PIN, led_state);
+            printf("Heartbeat: %lu\n", heartbeat / 1000);
+            fflush(stdout);
+        }
+        heartbeat++;
+        sleep_ms(1);
+        
         // Process any pending packets
         Packet packet;
         if (packet_receive(&packet)) {
+            gpio_put(LED_PIN, 1);  // Flash LED briefly when packet received
+            printf("Received packet type: %d\n", packet.header.type);
+            fflush(stdout);
             if (!protocol_process_packet(&packet)) {
                 // Handle protocol error
                 ErrorDetails *error = error_get_last();
@@ -136,27 +183,30 @@ int main() {
                     snprintf(context, sizeof(context), "Duration: %ums, Attempts: %u",
                             result.duration_ms, result.attempts);
                     logging_write_with_context("Recovery", result.message, context);
+                    printf("Recovery attempt: %s (%s)\n", result.message, context);
+                    fflush(stdout);
                 }
             }
+            sleep_ms(50);  // Keep LED on briefly
+            gpio_put(LED_PIN, led_state);  // Return to heartbeat state
         }
         
         // Handle any pending errors
         ErrorDetails *error = error_get_last();
         if (error) {
+            gpio_put(LED_PIN, 1);  // LED on while handling error
+            printf("Error detected: %s\n", error->message);
+            fflush(stdout);
             if (error_is_recoverable(error)) {
                 RecoveryResult result = recovery_attempt(error);
                 // Log recovery attempt
                 char context[MESSAGE_CONTEXT_SIZE];
                 snprintf(context, sizeof(context), "Duration: %ums, Attempts: %u",
                         result.duration_ms, result.attempts);
-                logging_write_with_context("Recovery", result.message, context);
-            } else if (error_requires_reset(error)) {
-                logging_write("Main", "Fatal error, resetting system");
-                hardware_reset();
+                printf("Recovery attempt: %s (%s)\n", result.message, context);
+                fflush(stdout);
             }
+            gpio_put(LED_PIN, led_state);  // Return to heartbeat state
         }
-        
-        // Yield to allow USB processing
-        sleep_ms(1); // Minimum polling interval
     }
 }
