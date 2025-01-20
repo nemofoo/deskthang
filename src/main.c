@@ -65,18 +65,47 @@ static bool reinit_handler(const ErrorDetails *error) {
 
 // Initialize subsystems
 static bool init_subsystems(void) {
-    // Initialize error handling first
-    error_init();
+    const uint LED_PIN = 25;  // Make LED_PIN accessible here
     
-    // Initialize logging
+    // Initialize error handling first (doesn't depend on anything)
+    error_init();
+    gpio_put(LED_PIN, 0); sleep_ms(200); gpio_put(LED_PIN, 1);  // 1 blink for error init
+    sleep_ms(1000);  // Long pause after section
+    
+    // Initialize serial directly (don't call stdio_init_all() since it's done in main)
+    if (!serial_init()) {
+        return false;
+    }
+    gpio_put(LED_PIN, 0); sleep_ms(200); gpio_put(LED_PIN, 1);  // 1 more blink for serial
+    sleep_ms(1000);
+    
+    // Now initialize logging (depends on serial)
     if (!logging_init()) {
         return false;
     }
+    gpio_put(LED_PIN, 0); sleep_ms(200); 
+    gpio_put(LED_PIN, 1); sleep_ms(200); 
+    gpio_put(LED_PIN, 0); sleep_ms(200);
+    gpio_put(LED_PIN, 1);  // 2 blinks for logging init
+    sleep_ms(1000);  // Long pause after section
+    
+    // From here on we can use logging for debug output
+    logging_write("Init", "Logging system initialized");
     
     // Initialize recovery system
     if (!recovery_init()) {
+        logging_write("Init", "Recovery system initialization failed");
         return false;
     }
+    gpio_put(LED_PIN, 0); sleep_ms(200);
+    gpio_put(LED_PIN, 1); sleep_ms(200);
+    gpio_put(LED_PIN, 0); sleep_ms(200);
+    gpio_put(LED_PIN, 1); sleep_ms(200);
+    gpio_put(LED_PIN, 0); sleep_ms(200);
+    gpio_put(LED_PIN, 1);  // 3 blinks for recovery init
+    sleep_ms(1000);  // Long pause after section
+    
+    logging_write("Init", "Recovery system initialized");
     
     // Configure recovery using protocol-defined constants
     recovery_configure(&recovery_config);
@@ -86,24 +115,19 @@ static bool init_subsystems(void) {
     recovery_register_handler(RECOVERY_RESET_STATE, reset_handler);
     recovery_register_handler(RECOVERY_REINIT, reinit_handler);
     
-    // Initialize hardware
+    // Initialize basic hardware (GPIO, etc)
     if (!hardware_init(&hw_config)) {
+        logging_write("Init", "Hardware initialization failed");
         error_report(ERROR_TYPE_HARDWARE, ERROR_SEVERITY_FATAL, 1, "Hardware initialization failed");
         return false;
     }
-    
-    // Initialize display
-    if (!display_init(&hw_config, &display_config)) {
-        error_report(ERROR_TYPE_HARDWARE, ERROR_SEVERITY_FATAL, 2, "Display initialization failed");
-        return false;
+    for(int i = 0; i < 4; i++) {  // 4 blinks for hardware init
+        gpio_put(LED_PIN, 0); sleep_ms(200);
+        gpio_put(LED_PIN, 1); sleep_ms(200);
     }
+    sleep_ms(1000);  // Long pause after section
     
-    // Initialize protocol handler
-    if (!protocol_init(&protocol_config)) {
-        error_report(ERROR_TYPE_PROTOCOL, ERROR_SEVERITY_FATAL, 3, "Protocol initialization failed");
-        return false;
-    }
-    
+    logging_write("Init", "Core subsystems initialized successfully");
     return true;
 }
 
@@ -122,6 +146,8 @@ int main() {
         gpio_put(LED_PIN, i % 2);  // Toggle LED every 500ms
         sleep_ms(500);
     }
+
+    sleep_ms(2000);
     
     // Now start printing
     printf("\n\n\n=== Deskthang Debug Output ===\n");
@@ -129,15 +155,15 @@ int main() {
     printf("USB CDC should be ready now\n");
     fflush(stdout);
     
-    // Initialize all subsystems
-    printf("Initializing subsystems...\n");
+    // Initialize core subsystems
+    printf("Initializing core subsystems...\n");
     fflush(stdout);
     gpio_put(LED_PIN, 1);  // LED on during initialization
     
     if (!init_subsystems()) {
         // Handle initialization failure
         error_print_last();
-        printf("Initialization failed!\n");
+        printf("Core initialization failed!\n");
         fflush(stdout);
         while(1) {
             gpio_put(LED_PIN, 1);  // Fast blink to indicate failure
@@ -148,9 +174,41 @@ int main() {
         return 1;
     }
     
-    logging_write("Main", "System initialized successfully");
-    printf("System initialized successfully!\n");
+    logging_write("Main", "Core systems initialized successfully");
+    printf("Core initialization successful!\n");
     fflush(stdout);
+    
+    // Now try to initialize display
+    printf("Initializing display...\n");
+    fflush(stdout);
+    if (!display_init(&hw_config, &display_config)) {
+        printf("Display initialization failed - continuing without display\n");
+        fflush(stdout);
+        // Flash LED 3 times to indicate display failure but continue
+        for(int i = 0; i < 3; i++) {
+            gpio_put(LED_PIN, 0); sleep_ms(100);
+            gpio_put(LED_PIN, 1); sleep_ms(100);
+        }
+    } else {
+        printf("Display initialized successfully\n");
+        fflush(stdout);
+    }
+    
+    // Try to initialize protocol
+    printf("Initializing protocol...\n");
+    fflush(stdout);
+    if (!protocol_init(&protocol_config)) {
+        printf("Protocol initialization failed - continuing without protocol\n");
+        fflush(stdout);
+        // Flash LED 3 times to indicate protocol failure but continue
+        for(int i = 0; i < 3; i++) {
+            gpio_put(LED_PIN, 0); sleep_ms(100);
+            gpio_put(LED_PIN, 1); sleep_ms(100);
+        }
+    } else {
+        printf("Protocol initialized successfully\n");
+        fflush(stdout);
+    }
     
     uint32_t heartbeat = 0;
     bool led_state = false;
