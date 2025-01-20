@@ -1,18 +1,21 @@
 #include "gpio.h"
+#include "hardware.h"
 #include "hardware/gpio.h"
+#include "hardware/spi.h"
+#include <string.h>
 
-// Static configuration
+// GPIO state tracking
 static struct {
-    uint pin_mosi;
-    uint pin_sck;
-    uint pin_cs;
-    uint pin_dc;
-    uint pin_rst;
+    uint8_t pin_mosi;
+    uint8_t pin_sck;
+    uint8_t pin_cs;
+    uint8_t pin_dc;
+    uint8_t pin_rst;
     bool initialized;
-} gpio_state = {0};
+} gpio_state;
 
 bool display_gpio_init(const HardwareConfig *config) {
-    if (config == NULL) {
+    if (!config) {
         return false;
     }
 
@@ -42,7 +45,7 @@ bool display_gpio_init(const HardwareConfig *config) {
     gpio_put(gpio_state.pin_dc, 1);  // Data mode
     gpio_put(gpio_state.pin_rst, 1); // Not in reset
 
-    // Set SPI pin functions
+    // Configure SPI pins
     gpio_set_function(gpio_state.pin_mosi, GPIO_FUNC_SPI);
     gpio_set_function(gpio_state.pin_sck, GPIO_FUNC_SPI);
 
@@ -55,37 +58,26 @@ void display_gpio_deinit(void) {
         return;
     }
 
-    // Reset all pins to inputs (safe state)
+    // Reset all pins to inputs with no pulls
     gpio_set_dir(gpio_state.pin_mosi, GPIO_IN);
     gpio_set_dir(gpio_state.pin_sck, GPIO_IN);
     gpio_set_dir(gpio_state.pin_cs, GPIO_IN);
     gpio_set_dir(gpio_state.pin_dc, GPIO_IN);
     gpio_set_dir(gpio_state.pin_rst, GPIO_IN);
 
-    // Disable pull-ups/downs
     gpio_disable_pulls(gpio_state.pin_mosi);
     gpio_disable_pulls(gpio_state.pin_sck);
     gpio_disable_pulls(gpio_state.pin_cs);
     gpio_disable_pulls(gpio_state.pin_dc);
     gpio_disable_pulls(gpio_state.pin_rst);
 
-    // Reset pin functions to GPIO
-    gpio_set_function(gpio_state.pin_mosi, GPIO_FUNC_NULL);
-    gpio_set_function(gpio_state.pin_sck, GPIO_FUNC_NULL);
-
-    // Clear state
     gpio_state.initialized = false;
 }
 
-void display_gpio_set(uint pin, bool value) {
+void display_gpio_set(uint8_t pin, bool value) {
     if (!gpio_state.initialized) {
         return;
     }
 
-    // Only allow setting control pins (CS, DC, RST)
-    if (pin == gpio_state.pin_cs ||
-        pin == gpio_state.pin_dc ||
-        pin == gpio_state.pin_rst) {
-        gpio_put(pin, value);
-    }
+    gpio_put(pin, value);
 }

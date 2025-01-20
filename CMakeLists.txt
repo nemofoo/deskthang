@@ -4,10 +4,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # initialize pico-sdk from submodule
 include(pico-sdk/pico_sdk_init.cmake)
 
-project(gc9a01_display)
+# Set project name and enable C/C++
+project(gc9a01_display C CXX ASM)
 
-# initialize the Raspberry Pi Pico SDK
+# Initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
+
+# Configure stdio settings globally
+set(PICO_ENABLE_STDIO_USB 1)
+set(PICO_ENABLE_STDIO_UART 0)
+set(PICO_USB_ENABLE_CDC_COMPOSITE 1)
 
 # Add libraries
 add_library(error
@@ -56,6 +62,28 @@ add_library(hardware
 
 # Set up include directories for all targets
 include_directories(${CMAKE_SOURCE_DIR}/src)
+include_directories(${CMAKE_SOURCE_DIR}/src/include)
+
+# Update hardware target includes
+target_include_directories(hardware
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${PICO_SDK_PATH}/src/common/pico_stdlib/include
+    ${PICO_SDK_PATH}/src/common/pico_base/include
+    ${PICO_SDK_PATH}/src/common/pico_binary_info/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_gpio/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_spi/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_sync/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_structs/include
+    ${PICO_SDK_PATH}/src/rp2040/hardware_structs/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_irq/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_claim/include
+    ${PICO_SDK_PATH}/src/rp2040/hardware_regs/include
+    ${PICO_SDK_PATH}/src/rp2_common/pico_platform/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_base/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_clocks/include
+    ${PICO_SDK_PATH}/src/rp2_common/hardware_dma/include
+)
 
 # Set up library dependencies
 target_link_libraries(logging PRIVATE error)
@@ -65,19 +93,27 @@ target_link_libraries(command PRIVATE error packet)
 target_link_libraries(protocol PRIVATE error packet command)
 target_link_libraries(system PRIVATE pico_stdlib)
 target_link_libraries(state PRIVATE error system)
-target_link_libraries(hardware PRIVATE error pico_stdlib hardware_spi)
+target_link_libraries(hardware 
+    PRIVATE 
+    error 
+    pico_stdlib 
+    hardware_spi
+    hardware_gpio
+    hardware_sync
+    hardware_structs
+    hardware_irq
+    hardware_claim
+)
 
-set(PICO_ENABLE_STDIO_USB 1)
-set(PICO_ENABLE_STDIO_UART 0)
-set(PICO_USB_ENABLE_CDC_COMPOSITE 1)
-
-add_executable(
-    display_test
+add_executable(display_test
     src/main.c
 )
 
-target_link_libraries(
-    display_test 
+# Enable stdio USB for the executable
+pico_enable_stdio_usb(display_test 1)
+pico_enable_stdio_uart(display_test 0)
+
+target_link_libraries(display_test 
     pico_stdlib
     hardware_spi
     pico_stdio_usb

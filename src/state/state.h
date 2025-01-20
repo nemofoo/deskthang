@@ -1,19 +1,19 @@
-#ifndef DESKTHANG_STATE_H
-#define DESKTHANG_STATE_H
+#ifndef __DESKTHANG_STATE_H
+#define __DESKTHANG_STATE_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
-// System states
+// System states as defined in protocol_state_machine.md
 typedef enum {
-    STATE_HARDWARE_INIT,    // Initial hardware setup
-    STATE_DISPLAY_INIT,     // Display initialization
-    STATE_IDLE,            // Waiting for connection
-    STATE_SYNCING,         // Establishing sync
-    STATE_READY,           // Ready for commands
+    STATE_HARDWARE_INIT,     // Initial hardware setup
+    STATE_DISPLAY_INIT,      // Display initialization
+    STATE_IDLE,             // Default waiting state
+    STATE_SYNCING,          // Protocol synchronization
+    STATE_READY,            // Ready for commands
     STATE_COMMAND_PROCESSING, // Processing command
-    STATE_DATA_TRANSFER,   // Transferring data
-    STATE_ERROR            // Error handling
+    STATE_DATA_TRANSFER,    // Handling data transfer
+    STATE_ERROR             // Error handling state
 } SystemState;
 
 // State transition conditions
@@ -26,10 +26,10 @@ typedef enum {
     CONDITION_COMMAND_VALID,
     CONDITION_TRANSFER_START,
     CONDITION_TRANSFER_COMPLETE,
-    CONDITION_ERROR,        // Error occurred
-    CONDITION_RECOVERED,    // Recovery successful
-    CONDITION_RESET,        // System reset needed
-    CONDITION_RETRY         // Retry operation
+    CONDITION_ERROR,
+    CONDITION_RESET,
+    CONDITION_RETRY,
+    CONDITION_RECOVERED
 } StateCondition;
 
 // Function pointer types for state actions
@@ -44,21 +44,25 @@ typedef struct {
     StateErrorHandler on_error;
 } StateActions;
 
-// State machine initialization
+// Core state machine functions
 bool state_machine_init(void);
-
-// State transitions
-bool state_machine_transition(SystemState next_state, StateCondition condition);
-bool state_machine_handle_error(void);
-bool state_machine_attempt_recovery(void);
-
-// State queries
 SystemState state_machine_get_current(void);
+bool state_machine_transition(SystemState next_state, StateCondition condition);
+bool state_machine_can_transition_to(SystemState next_state);
+
+// State validation
+bool state_machine_validate_state(SystemState state);
+bool state_machine_validate_transition(SystemState current, SystemState next, StateCondition condition);
+
+// State history
 SystemState state_machine_get_previous(void);
-bool state_machine_is_in_error(void);
+uint32_t state_machine_get_state_duration(void);
 
 // Debug support
 const char *state_to_string(SystemState state);
 const char *condition_to_string(StateCondition condition);
 
-#endif // DESKTHANG_STATE_H
+bool state_machine_handle_error(void);
+SystemState state_machine_get_current_state(void);
+
+#endif // __DESKTHANG_STATE_H

@@ -1,5 +1,7 @@
 #include "transition.h"
 #include "../error/logging.h"
+#include "../system/time.h"
+#include <stdio.h>
 
 // Add at top of file after includes
 extern const StateActions STATE_ACTIONS[];
@@ -46,77 +48,76 @@ static const TransitionRule VALID_TRANSITIONS[] = {
     {STATE_ERROR, STATE_ERROR, CONDITION_NONE}
 };
 
-bool transition_is_valid(const StateContext *ctx, SystemState next, StateCondition condition) {
-    if (!ctx) return false;
-    
-    // Any state can transition to ERROR with CONDITION_ERROR
-    if (next == STATE_ERROR && condition == CONDITION_ERROR) {
-        return true;
+// Add after transitions table
+#define TRANSITION_RULE_COUNT (sizeof(VALID_TRANSITIONS) / sizeof(VALID_TRANSITIONS[0]))
+
+bool transition_is_valid(const StateContext *ctx, SystemState next_state, StateCondition condition) {
+    if (!ctx) {
+        return false;
     }
-    
-    // Look up transition in table
-    const TransitionRule *rule = VALID_TRANSITIONS;
-    while (rule->condition != CONDITION_NONE) {
-        if (rule->from_state == ctx->current && 
-            rule->to_state == next && 
+
+    // Find matching transition rule
+    for (size_t i = 0; i < TRANSITION_RULE_COUNT; i++) {
+        const TransitionRule *rule = &VALID_TRANSITIONS[i];
+        if (rule->from_state == ctx->current_state &&
+            rule->to_state == next_state &&
             rule->condition == condition) {
             return true;
         }
-        rule++;
     }
-    
-    // Log invalid transition attempt
+
     char context[256];
     snprintf(context, sizeof(context),
-        "From %s to %s (%s)",
-        state_to_string(ctx->current),
-        state_to_string(next),
-        condition_to_string(condition));
-    logging_write_with_context("Transition", "Invalid transition", context);
-    
+             "Invalid transition: %s -> %s (%s)",
+             state_to_string(ctx->current_state),
+             state_to_string(next_state),
+             condition_to_string(condition));
+    logging_write_with_context("State", "Invalid transition", context);
+
     return false;
 }
 
 bool transition_can_recover(const StateContext *ctx) {
-    if (!ctx || ctx->current != STATE_ERROR) {
+    if (!ctx || ctx->current_state != STATE_ERROR) {
         return false;
     }
-    
-    // Can only recover if we have retries available
-    return context_can_retry(ctx);
+
+    // Check retry count
+    return state_context_can_retry();
 }
 
 bool transition_entry(StateContext *ctx) {
-    if (!ctx) return false;
-    
-    // Update timing
-    context_update_timing(ctx);
-    
-    // Reset retry count on state entry unless entering ERROR state
-    if (ctx->current != STATE_ERROR) {
-        context_reset_retry(ctx);
+    if (!ctx) {
+        return false;
     }
-    
-    // Execute state-specific entry actions
-    const StateActions *actions = &STATE_ACTIONS[ctx->current];
-    if (actions->on_entry) {
+
+    // Update timing
+    ctx->last_update = get_system_time();
+
+    // Reset retry count if not entering error state
+    if (ctx->current_state != STATE_ERROR) {
+        state_context_reset_retry();
+    }
+
+    // Execute entry actions
+    const StateActions *actions = &STATE_ACTIONS[ctx->current_state];
+    if (actions && actions->on_entry) {
         actions->on_entry();
     }
-    
+
     return true;
 }
 
 bool transition_exit(StateContext *ctx) {
-    if (!ctx) return false;
-    
-    // Execute state-specific exit actions
-    const StateActions *actions = &STATE_ACTIONS[ctx->current];
-    if (actions->on_exit) {
+    if (!ctx) {
+        return false;
+    }
+
+    // Execute exit actions
+    const StateActions *actions = &STATE_ACTIONS[ctx->current_state];
+    if (actions && actions->on_exit) {
         actions->on_exit();
     }
-    
-    // Clear any state-specific data
-    context_clear_state_data(ctx);
-    
+
     return true;
 }

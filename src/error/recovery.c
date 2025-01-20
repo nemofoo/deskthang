@@ -1,6 +1,7 @@
 #include "recovery.h"
 #include "error.h"
 #include "logging.h"
+#include "../system/time.h"
 #include <string.h>
 #include <stdio.h>
 

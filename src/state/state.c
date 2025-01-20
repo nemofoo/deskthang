@@ -4,6 +4,20 @@
 #include "transition.h"
 #include "../error/logging.h"
 #include "../system/time.h"
+#include "../protocol/protocol.h"
+#include "../protocol/command.h"
+#include "../protocol/transfer.h"
+
+// Forward declare hardware functions we need
+bool spi_is_configured(void);
+bool gpio_pins_configured(void);
+bool timing_requirements_met(void);
+bool display_reset_complete(void);
+bool display_params_valid(void);
+bool display_responding(void);
+
+// Add after includes
+extern void log_info(const char *format, ...);  // From logging.h
 
 // Forward declarations for state handlers
 static void hardware_init_entry(void);
@@ -190,93 +204,73 @@ static void error_error(void *ctx) {
     // Handle errors in error state
 }
 
-// Current state machine context
+// Global state context
 static StateContext g_state_context;
 
 bool state_machine_init(void) {
     // Initialize context
-    context_init(&g_state_context);
+    state_context_init();
     
-    // Start in hardware init state
-    g_state_context.current = STATE_HARDWARE_INIT;
-    g_state_context.previous = STATE_HARDWARE_INIT;
-    g_state_context.entry_time = get_system_time();
+    // Set initial state
+    g_state_context.current_state = STATE_HARDWARE_INIT;
+    g_state_context.previous_state = STATE_HARDWARE_INIT;
+    g_state_context.last_condition = CONDITION_NONE;
     
     return true;
 }
 
 bool state_machine_transition(SystemState next_state, StateCondition condition) {
     // Validate transition
-    if (!transition_is_valid(&g_state_context, next_state, condition)) {
-        logging_write("State", "Invalid transition attempted");
-        return false;
-    }
-    
-    // Execute exit actions for current state
-    if (!transition_exit(&g_state_context)) {
-        logging_write("State", "Exit actions failed");
+    if (!state_machine_validate_transition(g_state_context.current_state, next_state, condition)) {
         return state_machine_handle_error();
     }
     
     // Update state
-    g_state_context.previous = g_state_context.current;
-    g_state_context.current = next_state;
-    g_state_context.entry_time = get_system_time();
+    g_state_context.previous_state = g_state_context.current_state;
+    g_state_context.current_state = next_state;
     g_state_context.last_condition = condition;
-    
-    // Execute entry actions for new state
-    if (!transition_entry(&g_state_context)) {
-        logging_write("State", "Entry actions failed");
-        return state_machine_handle_error();
-    }
+    g_state_context.last_update = get_system_time();
     
     // Log transition
-    char context[256];
-    snprintf(context, sizeof(context),
-             "From %s to %s (%s)",
-             state_to_string(g_state_context.previous),
-             state_to_string(g_state_context.current),
+    log_info("State transition: %s -> %s (Condition: %s)",
+             state_to_string(g_state_context.previous_state),
+             state_to_string(g_state_context.current_state),
              condition_to_string(condition));
-    logging_write_with_context("State", "State transition", context);
     
     return true;
 }
 
 bool state_machine_handle_error(void) {
-    // Already in error state?
-    if (g_state_context.current == STATE_ERROR) {
-        return false;
+    if (g_state_context.current_state == STATE_ERROR) {
+        return false;  // Already in error state
     }
     
-    // Transition to error state
     return state_machine_transition(STATE_ERROR, CONDITION_ERROR);
 }
 
 bool state_machine_attempt_recovery(void) {
-    // Must be in error state
-    if (g_state_context.current != STATE_ERROR) {
+    if (g_state_context.current_state != STATE_ERROR) {
         return false;
     }
     
-    // Try to recover to previous state
-    if (transition_can_recover(&g_state_context)) {
-        return state_machine_transition(g_state_context.previous, CONDITION_RECOVERED);
+    if (state_context_can_retry()) {
+        state_context_increment_retry();
+        return state_machine_transition(g_state_context.previous_state, CONDITION_RECOVERED);
     }
     
-    // Force reset to IDLE
     return state_machine_transition(STATE_IDLE, CONDITION_RESET);
 }
 
 SystemState state_machine_get_current(void) {
-    return g_state_context.current;
+    return g_state_context.current_state;
 }
 
 SystemState state_machine_get_previous(void) {
-    return g_state_context.previous;
+    return g_state_context.previous_state;
 }
 
 bool state_machine_is_in_error(void) {
-    return g_state_context.current == STATE_ERROR;
+    return g_state_context.current_state == STATE_ERROR;
 }
 
 // Debug support
@@ -315,37 +309,120 @@ const char *condition_to_string(StateCondition condition) {
 // State validation functions implementation
 bool validate_hardware_init(void) {
     // Validate SPI configuration
+    if (!spi_is_configured()) {
+        logging_write("State", "SPI not configured");
+        return false;
+    }
+
     // Validate GPIO pins
+    if (!gpio_pins_configured()) {
+        logging_write("State", "GPIO pins not configured");
+        return false;
+    }
+
     // Validate timing requirements
-    return true; // TODO: Implement actual validation
+    if (!timing_requirements_met()) {
+        logging_write("State", "Timing requirements not met");
+        return false;
+    }
+
+    return true;
 }
 
 bool validate_display_init(void) {
     // Validate reset sequence complete
+    if (!display_reset_complete()) {
+        logging_write("State", "Display reset incomplete");
+        return false;
+    }
+
     // Validate display parameters
+    if (!display_params_valid()) {
+        logging_write("State", "Display parameters invalid");
+        return false;
+    }
+
     // Validate display response
-    return true; // TODO: Implement actual validation
+    if (!display_responding()) {
+        logging_write("State", "Display not responding");
+        return false;
+    }
+
+    return true;
 }
 
 bool validate_sync_request(void) {
+    // Get protocol config
+    const ProtocolConfig *config = protocol_get_config();
+    if (!config) {
+        logging_write("State", "Protocol config not available");
+        return false;
+    }
+
     // Validate protocol version
-    // Validate timing
-    // Validate retry count
-    return true; // TODO: Implement actual validation
+    if (!protocol_validate_version(config->version)) {
+        logging_write("State", "Invalid protocol version");
+        return false;
+    }
+
+    // Validate timing within limits
+    if (!protocol_timing_valid()) {
+        logging_write("State", "Protocol timing invalid");
+        return false;
+    }
+
+    // Get retry count from context
+    uint32_t retry_count = state_context_get_retry_count();
+    if (retry_count >= config->timing.max_retries) {
+        logging_write("State", "Max retries exceeded");
+        return false;
+    }
+
+    return true;
 }
 
 bool validate_command(void) {
     // Validate command type
+    if (!command_type_valid()) {
+        logging_write("State", "Invalid command type");
+        return false;
+    }
+
     // Validate parameters
-    // Validate resources
-    return true; // TODO: Implement actual validation
+    if (!command_params_valid()) {
+        logging_write("State", "Invalid command parameters");
+        return false;
+    }
+
+    // Validate resources available
+    if (!command_resources_available()) {
+        logging_write("State", "Required resources unavailable");
+        return false;
+    }
+
+    return true;
 }
 
 bool validate_transfer(void) {
-    // Validate buffer space
+    // Validate buffer space available
+    if (!transfer_buffer_available()) {
+        logging_write("State", "Transfer buffer full");
+        return false;
+    }
+
     // Validate sequence numbers
-    // Validate checksums
-    return true; // TODO: Implement actual validation
+    if (!transfer_sequence_valid()) {
+        logging_write("State", "Invalid transfer sequence");
+        return false;
+    }
+
+    // Validate checksums match
+    if (!transfer_checksum_valid()) {
+        logging_write("State", "Invalid transfer checksum");
+        return false;
+    }
+
+    return true;
 }
 
 bool state_machine_handle_recovery(const ErrorDetails *error) {

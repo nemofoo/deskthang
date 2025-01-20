@@ -1,6 +1,8 @@
 #include "transfer.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include "../system/time.h"
 
 // Global transfer context
 static TransferContext g_transfer_context;

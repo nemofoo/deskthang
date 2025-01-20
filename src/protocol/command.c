@@ -1,15 +1,18 @@
 #include "command.h"
+#include "../state/state.h"
+#include "../system/time.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 // Global command context
-static CommandContext g_command_context;
-static CommandStatus g_command_status;
+static CommandContext g_command_context = {0};
+static CommandStatus g_command_status = {0};
 
 // Initialize command processing
 bool command_init(void) {
     memset(&g_command_context, 0, sizeof(CommandContext));
-    memset(&g_command_status, 0, sizeof(CommandStatus));
+    g_command_context.in_progress = false;
     return true;
 }
 
@@ -28,56 +31,38 @@ CommandContext *command_get_context(void) {
 }
 
 // Process incoming command packet
-bool command_process(const Packet *packet) {
-    if (!packet || packet_get_type(packet) != PACKET_CMD) {
+bool command_process(const uint8_t *data, size_t len) {
+    if (!data || !len) {
         return false;
     }
-    
-    const uint8_t *payload = packet_get_payload(packet);
-    if (!payload || packet_get_length(packet) < 1) {
+
+    // Validate command state
+    if (!command_validate_state()) {
         return false;
     }
-    
-    CommandType cmd = (CommandType)payload[0];
-    if (!command_validate_type(cmd)) {
-        return false;
-    }
-    
-    // Handle command based on type
-    bool success = false;
-    switch (cmd) {
+
+    // Track timing
+    g_command_context.start_time = get_system_time();
+    g_command_context.type = (CommandType)data[0];
+    g_command_context.in_progress = true;
+
+    // Process command
+    bool result = false;
+    switch (data[0]) {
         case CMD_IMAGE_START:
-            success = command_start_image_transfer();
+            result = command_start_image_transfer(data + 1, len - 1);
             break;
             
         case CMD_IMAGE_END:
-            success = command_end_image_transfer();
+            result = command_end_image_transfer();
             break;
             
-        case CMD_PATTERN_CHECKER:
-            success = command_show_checkerboard();
-            break;
-            
-        case CMD_PATTERN_STRIPE:
-            success = command_show_stripes();
-            break;
-            
-        case CMD_PATTERN_GRADIENT:
-            success = command_show_gradient();
-            break;
-            
-        case CMD_HELP:
-            success = command_show_help();
-            break;
+        default:
+            command_set_status(false, "Unknown command");
+            return false;
     }
-    
-    if (success) {
-        g_command_context.type = cmd;
-        g_command_context.start_time = get_system_time();
-        g_command_context.in_progress = true;
-    }
-    
-    return success;
+
+    return result;
 }
 
 // Complete current command
@@ -130,7 +115,7 @@ bool command_validate_type(CommandType type) {
 
 bool command_validate_state(void) {
     SystemState current = state_machine_get_current();
-    return current == STATE_COMMAND_PROCESSING || 
+    return current == STATE_COMMAND_PROCESSING ||
            current == STATE_DATA_TRANSFER;
 }
 
@@ -139,16 +124,10 @@ bool command_validate_sequence(const Packet *packet) {
 }
 
 // Image transfer commands
-bool command_start_image_transfer(void) {
-    if (g_command_context.in_progress) {
-        return false;
-    }
+bool command_start_image_transfer(const uint8_t *data, size_t len) {
+    // Validate transfer parameters here
     
-    // Initialize transfer context
-    g_command_context.bytes_processed = 0;
-    g_command_context.total_bytes = 240 * 240 * 2; // RGB565 format
-    
-    // Transition to data transfer state
+    // Transition to transfer state
     return state_machine_transition(STATE_DATA_TRANSFER, CONDITION_TRANSFER_START);
 }
 
@@ -166,14 +145,7 @@ bool command_process_image_chunk(const uint8_t *data, uint16_t length) {
 }
 
 bool command_end_image_transfer(void) {
-    if (!g_command_context.in_progress) {
-        return false;
-    }
-    
-    // Verify all data received
-    if (g_command_context.bytes_processed != g_command_context.total_bytes) {
-        return false;
-    }
+    // Validate transfer completion here
     
     // Return to ready state
     return state_machine_transition(STATE_READY, CONDITION_TRANSFER_COMPLETE);
@@ -225,14 +197,10 @@ void command_set_status(bool success, const char *message) {
 // Debug support
 void command_print_status(void) {
     printf("Command Status:\n");
-    printf("  Type: %s\n", command_type_to_string(g_command_context.type));
     printf("  In Progress: %s\n", g_command_context.in_progress ? "Yes" : "No");
-    printf("  Bytes Processed: %u/%u\n", g_command_context.bytes_processed, g_command_context.total_bytes);
-    printf("  Success: %s\n", g_command_status.success ? "Yes" : "No");
-    printf("  Duration: %ums\n", g_command_status.duration_ms);
-    if (g_command_status.message[0]) {
-        printf("  Message: %s\n", g_command_status.message);
-    }
+    printf("  Command Type: %s\n", command_type_to_string(g_command_context.type));
+    printf("  Bytes Processed: %lu\n", (unsigned long)g_command_context.bytes_processed);
+    printf("  Total Bytes: %lu\n", (unsigned long)g_command_context.total_bytes);
 }
 
 const char *command_type_to_string(CommandType type) {

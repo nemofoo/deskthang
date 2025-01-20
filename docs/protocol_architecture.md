@@ -6,6 +6,38 @@
 
 The protocol implements a robust state machine for managing display communication between a host and device. It handles synchronization, commands, data transfer, and error recovery with clearly defined states and transitions.
 
+## Communication Layer
+
+### USB Serial Communication
+The device uses the Raspberry Pi Pico SDK's standard library (pico_stdlib) to implement USB CDC communication. This provides:
+- Reliable serial communication over USB
+- Standard stdio interface for data transfer
+- Built-in buffering and error handling
+- Automatic USB device enumeration
+
+Key characteristics:
+- Baud Rate: USB CDC (virtual serial port)
+- Buffer Size: 512 bytes (matching protocol requirements)
+- Flow Control: Handled by pico_stdlib
+- Error Detection: Built-in USB error detection
+
+### Error Handling
+Errors are handled at multiple levels:
+1. Hardware Level (USB/Serial)
+   - Uses pico_stdlib's built-in error detection
+   - Automatic retry on transmission errors
+   - Buffer overflow protection
+
+2. Protocol Level
+   - Packet validation
+   - Sequence number tracking
+   - Timeout handling
+
+3. Application Level
+   - State validation
+   - Command validation
+   - Resource management
+
 ## State Machine Architecture
 
 ```mermaid

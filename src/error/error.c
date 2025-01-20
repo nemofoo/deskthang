@@ -1,60 +1,53 @@
 #include "error.h"
+#include "../system/time.h"
 #include <string.h>
 #include <stdio.h>
-#include "../system/time.h"
-#include "../protocol/protocol.h"
 
-// Global error tracking
-static ErrorDetails g_last_error;
+// Global error state
+static ErrorDetails g_last_error = {0};
+static bool g_initialized = false;
 
-// Initialize error handling
-bool error_init(void) {
+void error_init(void) {
     memset(&g_last_error, 0, sizeof(ErrorDetails));
-    return true;
+    g_initialized = true;
 }
 
-// Reset error state
-void error_reset(void) {
-    memset(&g_last_error, 0, sizeof(ErrorDetails));
-}
-
-// Report a new error
 void error_report(ErrorType type, ErrorSeverity severity, uint32_t code, const char *message) {
-    error_report_with_context(type, severity, code, message, NULL);
-}
+    if (!g_initialized) {
+        return;
+    }
 
-// Report error with context
-void error_report_with_context(ErrorType type, ErrorSeverity severity, uint32_t code, 
-                             const char *message, const char *context) {
-    // Update last error
+    // Validate error code range
+    if (!error_code_in_range(type, code)) {
+        // If invalid code provided, report a system error instead
+        g_last_error.type = ERROR_TYPE_SYSTEM;
+        g_last_error.severity = ERROR_SEVERITY_ERROR;
+        g_last_error.code = 6001; // System error: Invalid error code
+        g_last_error.timestamp = get_system_time();
+        snprintf(g_last_error.message, sizeof(g_last_error.message),
+                "Invalid error code %u for type %s", code, error_type_to_string(type));
+        g_last_error.recoverable = true;
+        return;
+    }
+
+    // Store error details
     g_last_error.type = type;
     g_last_error.severity = severity;
     g_last_error.code = code;
     g_last_error.timestamp = get_system_time();
-    g_last_error.state = state_machine_get_current();
     
-    if (message) {
-        strncpy(g_last_error.message, message, sizeof(g_last_error.message) - 1);
-    } else {
-        g_last_error.message[0] = '\0';
-    }
+    // Copy message with bounds checking
+    strncpy(g_last_error.message, message ? message : "Unknown error", sizeof(g_last_error.message) - 1);
+    g_last_error.message[sizeof(g_last_error.message) - 1] = '\0';
     
-    if (context) {
-        strncpy(g_last_error.context, context, sizeof(g_last_error.context) - 1);
-    } else {
-        g_last_error.context[0] = '\0';
-    }
-    
-    // Determine if error is recoverable
+    // Set recoverable flag based on severity
     g_last_error.recoverable = (severity != ERROR_SEVERITY_FATAL);
 }
 
-// Error query functions
 ErrorDetails *error_get_last(void) {
     return &g_last_error;
 }
 
-// Error classification
 bool error_is_recoverable(const ErrorDetails *error) {
     if (!error) {
         return false;
@@ -62,53 +55,57 @@ bool error_is_recoverable(const ErrorDetails *error) {
     return error->recoverable;
 }
 
-bool error_requires_reset(const ErrorDetails *error) {
-    if (!error) {
-        return false;
-    }
-    return error->severity == ERROR_SEVERITY_FATAL;
-}
-
-ErrorSeverity error_get_severity(uint32_t code) {
-    if (code == g_last_error.code) {
-        return g_last_error.severity;
-    }
-    return ERROR_SEVERITY_ERROR; // Default to error severity
-}
-
-// Debug support
-void error_print_last(void) {
-    printf("Last Error:\n");
-    printf("  Type: %s\n", error_type_to_string(g_last_error.type));
-    printf("  Severity: %s\n", error_severity_to_string(g_last_error.severity));
-    printf("  Code: %u\n", g_last_error.code);
-    printf("  State: %d\n", g_last_error.state);
-    printf("  Recoverable: %s\n", g_last_error.recoverable ? "Yes" : "No");
-    printf("  Message: %s\n", g_last_error.message);
-    if (g_last_error.context[0]) {
-        printf("  Context: %s\n", g_last_error.context);
-    }
-}
-
-const char *error_severity_to_string(ErrorSeverity severity) {
-    switch (severity) {
-        case ERROR_SEVERITY_INFO:    return "INFO";
-        case ERROR_SEVERITY_WARNING: return "WARNING";
-        case ERROR_SEVERITY_ERROR:   return "ERROR";
-        case ERROR_SEVERITY_FATAL:   return "FATAL";
-        default:                     return "UNKNOWN";
+bool error_code_in_range(ErrorType type, uint32_t code) {
+    switch (type) {
+        case ERROR_TYPE_HARDWARE:
+            return (code >= 1000 && code <= 1999);
+        case ERROR_TYPE_PROTOCOL:
+            return (code >= 2000 && code <= 2999);
+        case ERROR_TYPE_STATE:
+            return (code >= 3000 && code <= 3999);
+        case ERROR_TYPE_COMMAND:
+            return (code >= 4000 && code <= 4999);
+        case ERROR_TYPE_TRANSFER:
+            return (code >= 5000 && code <= 5999);
+        case ERROR_TYPE_SYSTEM:
+            return (code >= 6000 && code <= 6999);
+        default:
+            return false;
     }
 }
 
 const char *error_type_to_string(ErrorType type) {
     switch (type) {
-        case ERROR_TYPE_NONE:     return "NONE";
-        case ERROR_TYPE_HARDWARE: return "HARDWARE";
-        case ERROR_TYPE_PROTOCOL: return "PROTOCOL";
-        case ERROR_TYPE_STATE:    return "STATE";
-        case ERROR_TYPE_COMMAND:  return "COMMAND";
-        case ERROR_TYPE_TRANSFER: return "TRANSFER";
-        case ERROR_TYPE_SYSTEM:   return "SYSTEM";
-        default:                 return "UNKNOWN";
+        case ERROR_TYPE_NONE:
+            return "NONE";
+        case ERROR_TYPE_HARDWARE:
+            return "HARDWARE";
+        case ERROR_TYPE_PROTOCOL:
+            return "PROTOCOL";
+        case ERROR_TYPE_STATE:
+            return "STATE";
+        case ERROR_TYPE_COMMAND:
+            return "COMMAND";
+        case ERROR_TYPE_TRANSFER:
+            return "TRANSFER";
+        case ERROR_TYPE_SYSTEM:
+            return "SYSTEM";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+const char *error_severity_to_string(ErrorSeverity severity) {
+    switch (severity) {
+        case ERROR_SEVERITY_INFO:
+            return "INFO";
+        case ERROR_SEVERITY_WARNING:
+            return "WARNING";
+        case ERROR_SEVERITY_ERROR:
+            return "ERROR";
+        case ERROR_SEVERITY_FATAL:
+            return "FATAL";
+        default:
+            return "UNKNOWN";
     }
 }

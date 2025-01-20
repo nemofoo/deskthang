@@ -4,57 +4,26 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "hardware/spi.h"
+#include "hardware/gpio.h"
 #include "hardware.h"
-#include "pico-sdk/src/rp2_common/hardware_spi/include/hardware/spi.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// SPI Configuration structure
+typedef struct {
+    uint8_t spi_port;    // 0 or 1
+    uint32_t baud_rate;  // Hz
+    uint8_t cs_pin;      // Chip select pin
+    uint8_t sck_pin;     // Clock pin
+    uint8_t mosi_pin;    // MOSI pin
+    uint8_t miso_pin;    // MISO pin
+} SPIConfig;
 
-/**
- * Initialize SPI interface for display
- * @param config Hardware configuration containing SPI settings
- * @return true if initialization successful, false otherwise
- */
-bool display_spi_init(const HardwareConfig *config);
-
-/**
- * Deinitialize display SPI interface
- */
-void display_spi_deinit(void);
-
-/**
- * Write data to display over SPI
- * @param data Pointer to data buffer
- * @param len Length of data in bytes
- * @return Number of bytes written
- */
-size_t display_spi_write(const uint8_t *data, size_t len);
-
-/**
- * Write single byte to display over SPI
- * @param byte Byte to write
- * @return true if write successful, false otherwise
- */
-bool display_spi_write_byte(uint8_t byte);
-
-/**
- * Read data from display over SPI
- * @param data Pointer to data buffer
- * @param len Length of data to read in bytes
- * @return Number of bytes read
- */
-size_t display_spi_read(uint8_t *data, size_t len);
-
-/**
- * Read single byte from display over SPI
- * @param byte Pointer to store read byte
- * @return true if read successful, false otherwise
- */
-bool display_spi_read_byte(uint8_t *byte);
-
-#ifdef __cplusplus
-}
-#endif
+// SPI interface functions
+bool spi_device_init(const SPIConfig *config);
+void spi_device_deinit(void);
+bool spi_write(const uint8_t *data, size_t len);
+bool spi_read(uint8_t *data, size_t len);
+bool spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, size_t len);
+void spi_chip_select(bool select);
 
 #endif // __DESKTHANG_SPI_H

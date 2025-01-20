@@ -1,5 +1,6 @@
 #include "logging.h"
 #include <string.h>
+#include "../system/time.h"
 #include <stdio.h>
 #include "../hardware/serial.h"
 #include "../protocol/packet.h"
@@ -9,81 +10,76 @@
 #define DEBUG_PACKET_PREFIX "[LOG]"
 #define DEBUG_PACKET_MAX_SIZE MAX_PACKET_SIZE
 
-// Default log configuration
-static LogConfig g_log_config = {
-    .enabled = true
-};
+// Static configuration
+static LogConfig log_config = {0};
 
-// Format and send debug packet
-static void send_debug_packet(const char *module, 
-                            const char *message, 
-                            const char *context) {
-    // Format debug message
-    char debug_buffer[DEBUG_PACKET_MAX_SIZE];
-    int written = snprintf(debug_buffer, sizeof(debug_buffer),
-        "%s [%u] %s (%s)%s%s\n",
-        DEBUG_PACKET_PREFIX,
-        get_system_time(),
-        message ? message : "",
-        module ? module : "unknown",
-        context ? " | " : "",
-        context ? context : "");
-
-    if (written > 0 && written < DEBUG_PACKET_MAX_SIZE) {
-        // Create debug packet
-        Packet packet;
-        if (packet_create_debug(&packet, module, debug_buffer)) {
-            // Send via serial with protocol-defined timeout
-            serial_write_exact((uint8_t*)&packet, sizeof(PacketHeader) + packet.header.length);
-            serial_flush();
-        }
+static bool send_debug_packet(const char *module, const char *message, const char *context) {
+    if (!log_config.enabled) {
+        return false;
     }
+
+    // Create packet
+    Packet packet = {0};
+    packet.header.type = PACKET_DEBUG;
+    packet.header.sequence = 0;  // Debug packets don't use sequence numbers
+
+    // Format debug message
+    char debug_message[DEBUG_PACKET_MAX_SIZE];
+    if (context) {
+        snprintf(debug_message, sizeof(debug_message), 
+                "%s [%u] [%s] %s | %s",
+                DEBUG_PACKET_PREFIX, time_get_ms(), module, message, context);
+    } else {
+        snprintf(debug_message, sizeof(debug_message),
+                "%s [%u] [%s] %s",
+                DEBUG_PACKET_PREFIX, time_get_ms(), module, message);
+    }
+
+    // Copy message to packet payload
+    size_t msg_len = strlen(debug_message) + 1;  // Include null terminator
+    memcpy(packet.payload, debug_message, msg_len);  // Changed from data to payload
+    packet.header.length = msg_len;
+
+    // Send packet
+    return serial_write((uint8_t*)&packet, sizeof(PacketHeader) + packet.header.length);
 }
 
 bool logging_init(void) {
-    // Initialize serial debug if enabled
-    if (g_log_config.enabled) {
-        if (!serial_init(0)) {  // Baud rate ignored for USB CDC
-            g_log_config.enabled = false;  // Disable if init fails
-            return false;
-        }
+    if (!serial_init()) {  // Remove baud rate parameter
+        return false;
     }
+    log_config.enabled = true;
     return true;
 }
 
 void logging_write(const char *module, const char *message) {
-    logging_write_with_context(module, message, NULL);
+    send_debug_packet(module, message, NULL);
 }
 
-void logging_write_with_context(const char *module, 
-                              const char *message, 
-                              const char *context) {
-    // Send to USB serial if enabled
-    if (g_log_config.enabled) {
-        send_debug_packet(module, message, context);
-    }
+void logging_write_with_context(const char *module, const char *message, const char *context) {
+    send_debug_packet(module, message, context);
 }
 
 void logging_error(const ErrorDetails *error) {
-    if (!error || !g_log_config.enabled) {
+    if (!error) {
         return;
     }
-    
-    char context[512];
-    snprintf(context, sizeof(context),
-             "Type: %s, Severity: %s, Code: %u, Recoverable: %s",
+
+    char message[512];
+    snprintf(message, sizeof(message),
+             "%s (ERR!) | Type: %s, Severity: %s, Code: %u, Recoverable: %s",
+             error->message,
              error_type_to_string(error->type),
              error_severity_to_string(error->severity),
              error->code,
-             error->recoverable ? "Yes" : "No");
-             
-    logging_write_with_context("ERR!",
-                              error->message,
-                              context);
+             error->recoverable ? "yes" : "no");
+
+    // Use NULL for module since timestamp is handled in send_debug_packet
+    logging_write("Error", message);
 }
 
 void logging_recovery(const RecoveryResult *result) {
-    if (!result || !g_log_config.enabled) {
+    if (!result) {
         return;
     }
     

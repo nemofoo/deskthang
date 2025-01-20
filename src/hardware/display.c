@@ -2,6 +2,7 @@
 #include "gpio.h"
 #include "spi.h"
 #include <string.h>
+#include "pico/stdlib.h"
 
 // Static configuration
 static struct {

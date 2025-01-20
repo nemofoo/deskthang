@@ -1,5 +1,5 @@
-#ifndef __HARDWARE_H
-#define __HARDWARE_H
+#ifndef __DESKTHANG_HARDWARE_H
+#define __DESKTHANG_HARDWARE_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -8,22 +8,23 @@
 extern "C" {
 #endif
 
-/**
- * Hardware configuration structure as defined in protocol architecture
- */
+// Pin configuration structure
+typedef struct {
+    uint8_t mosi;      // SPI MOSI pin
+    uint8_t sck;       // SPI clock pin
+    uint8_t cs;        // Chip select pin
+    uint8_t dc;        // Data/command pin
+    uint8_t rst;       // Reset pin
+} PinConfig;
+
+// Hardware configuration structure
 typedef struct {
     // Core configuration
     uint8_t spi_port;      // SPI port number
     uint32_t spi_baud;     // Baud rate (Hz)
     
     // Pin assignments
-    struct {
-        uint8_t mosi;      // SPI MOSI pin
-        uint8_t sck;       // SPI clock pin
-        uint8_t cs;        // Chip select pin
-        uint8_t dc;        // Data/command pin
-        uint8_t rst;       // Reset pin
-    } pins;
+    PinConfig pins;
     
     // Timing parameters
     struct {
@@ -77,4 +78,4 @@ bool hardware_reset(void);
 }
 #endif
 
-#endif // __HARDWARE_H
+#endif // __DESKTHANG_HARDWARE_H

@@ -1,15 +1,27 @@
 #include "protocol.h"
 #include <string.h>
 #include <stdlib.h>
+#include "../state/state.h"
+#include "../system/time.h"
+
+// Error codes
+#define ERROR_INVALID_VERSION 1000
+#define ERROR_HARDWARE_FAILURE 1001
 
 // Global protocol configuration
 static ProtocolConfig g_protocol_config;
 
 // Global error context
-static ErrorContext g_error_context;
+static ErrorDetails g_error_context;
 
 // Initialize protocol
-bool protocol_init(void) {
+bool protocol_init(const ProtocolConfig *config) {
+    if (!config) {
+        return false;
+    }
+    
+    // Copy configuration
+    memcpy(&g_protocol_config, config, sizeof(ProtocolConfig));
     // Initialize protocol configuration
     g_protocol_config.version = PROTOCOL_VERSION;
     g_protocol_config.sequence = 0;
@@ -31,7 +43,7 @@ bool protocol_init(void) {
     g_protocol_config.errors_seen = 0;
     
     // Clear error context
-    memset(&g_error_context, 0, sizeof(ErrorContext));
+    memset(&g_error_context, 0, sizeof(ErrorDetails));
     
     return true;
 }
@@ -42,7 +54,7 @@ void protocol_reset(void) {
     g_protocol_config.last_checksum = 0;
     g_protocol_config.packets_processed = 0;
     g_protocol_config.errors_seen = 0;
-    memset(&g_error_context, 0, sizeof(ErrorContext));
+    memset(&g_error_context, 0, sizeof(ErrorDetails));
 }
 
 // Get protocol configuration
@@ -50,12 +62,21 @@ ProtocolConfig *protocol_get_config(void) {
     return &g_protocol_config;
 }
 
+// Deinitialize protocol
+void protocol_deinit(void) {
+    // Reset protocol state
+    protocol_reset();
+    
+    // Clear error context
+    protocol_clear_error();
+}
+
 // Error handling
 void protocol_set_error(ErrorType type, const char *message) {
     g_error_context.type = type;
     g_error_context.source_state = state_machine_get_current();
     g_error_context.timestamp = get_system_time();
-    g_error_context.error_code = g_protocol_config.errors_seen++;
+    g_error_context.code = g_protocol_config.errors_seen++;
     
     if (message) {
         strncpy(g_error_context.message, message, sizeof(g_error_context.message) - 1);
@@ -82,13 +103,13 @@ void protocol_set_error(ErrorType type, const char *message) {
 }
 
 // Get current error context
-ErrorContext *protocol_get_error(void) {
+ErrorDetails *protocol_get_error(void) {
     return &g_error_context;
 }
 
 // Clear error state
 bool protocol_clear_error(void) {
-    memset(&g_error_context, 0, sizeof(ErrorContext));
+    memset(&g_error_context, 0, sizeof(ErrorDetails));
     return true;
 }
 
@@ -109,7 +130,7 @@ uint32_t protocol_calculate_backoff(uint8_t retry_count) {
 }
 
 // Determine if retry should be attempted
-bool protocol_should_retry(ErrorContext *ctx) {
+bool protocol_should_retry(ErrorDetails *ctx) {
     if (!ctx->recoverable) {
         return false;
     }

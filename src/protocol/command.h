@@ -1,8 +1,9 @@
-#ifndef DESKTHANG_COMMAND_H
-#define DESKTHANG_COMMAND_H
+#ifndef COMMAND_H
+#define COMMAND_H
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include "protocol.h"
 #include "packet.h"
 
@@ -32,7 +33,7 @@ void command_reset(void);
 CommandContext *command_get_context(void);
 
 // Command processing
-bool command_process(const Packet *packet);
+bool command_process(const uint8_t *data, size_t len);
 bool command_complete(void);
 bool command_abort(void);
 
@@ -42,8 +43,7 @@ bool command_validate_state(void);
 bool command_validate_sequence(const Packet *packet);
 
 // Image transfer commands
-bool command_start_image_transfer(void);
-bool command_process_image_chunk(const uint8_t *data, uint16_t length);
+bool command_start_image_transfer(const uint8_t *data, size_t len);
 bool command_end_image_transfer(void);
 
 // Pattern commands
@@ -56,10 +56,10 @@ bool command_show_help(void);
 
 // Command status
 typedef struct {
-    bool success;              // Command completed successfully
-    uint32_t duration_ms;      // Command execution time
-    uint32_t bytes_processed;  // Data processed
-    char message[64];          // Status message
+    bool success;
+    uint32_t duration_ms;
+    uint32_t bytes_processed;
+    char message[256];  // For status/error messages
 } CommandStatus;
 
 // Status tracking
@@ -70,4 +70,4 @@ void command_set_status(bool success, const char *message);
 void command_print_status(void);
 const char *command_type_to_string(CommandType type);
 
-#endif // DESKTHANG_COMMAND_H
+#endif // COMMAND_H

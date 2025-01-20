@@ -1,61 +1,51 @@
-#ifndef DESKTHANG_ERROR_H
-#define DESKTHANG_ERROR_H
+#ifndef ERROR_H
+#define ERROR_H
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../state/state.h"
 
-// Error severity levels
+// Error types as defined in protocol_architecture.md
 typedef enum {
-    ERROR_SEVERITY_INFO,     // Informational, no impact
-    ERROR_SEVERITY_WARNING,  // Warning, operation can continue
-    ERROR_SEVERITY_ERROR,    // Error, operation failed but recoverable
-    ERROR_SEVERITY_FATAL     // Fatal error, system needs reset
-} ErrorSeverity;
-
-// Error categories
-typedef enum {
-    ERROR_TYPE_NONE,        // No specific type
-    ERROR_TYPE_HARDWARE,    // Hardware-related errors
-    ERROR_TYPE_PROTOCOL,    // Protocol-related errors
-    ERROR_TYPE_STATE,       // State machine errors
-    ERROR_TYPE_COMMAND,     // Command processing errors
-    ERROR_TYPE_TRANSFER,    // Data transfer errors
-    ERROR_TYPE_SYSTEM      // System-level errors
+    ERROR_TYPE_NONE = 0,
+    ERROR_TYPE_HARDWARE,    // 1000-1999: Hardware interface errors
+    ERROR_TYPE_PROTOCOL,    // 2000-2999: Protocol handling errors  
+    ERROR_TYPE_STATE,       // 3000-3999: State machine errors
+    ERROR_TYPE_COMMAND,     // 4000-4999: Command processing errors
+    ERROR_TYPE_TRANSFER,    // 5000-5999: Data transfer errors
+    ERROR_TYPE_SYSTEM       // 6000-6999: System level errors
 } ErrorType;
 
-// Error details structure
+typedef enum {
+    ERROR_SEVERITY_INFO,
+    ERROR_SEVERITY_WARNING,
+    ERROR_SEVERITY_ERROR,
+    ERROR_SEVERITY_FATAL
+} ErrorSeverity;
+
+#include "../state/state.h"
+
 typedef struct {
-    ErrorType type;          // Error type (was category)
+    ErrorType type;          // Error type
     ErrorSeverity severity;  // Error severity
     uint32_t code;          // Error code
     uint32_t timestamp;     // When error occurred
-    SystemState state;      // State when error occurred
+    SystemState source_state; // State when error occurred
     char message[128];      // Error message
     char context[256];      // Additional context
     bool recoverable;       // Can be recovered from
+    uint8_t retry_count;    // Current retry count
+    uint32_t backoff_ms;    // Current backoff delay
 } ErrorDetails;
 
-// Error management functions
-bool error_init(void);
-void error_reset(void);
-
-// Error reporting
+// Core error functions
+void error_init(void);
 void error_report(ErrorType type, ErrorSeverity severity, uint32_t code, const char *message);
-void error_report_with_context(ErrorType type, ErrorSeverity severity, uint32_t code, 
-                             const char *message, const char *context);
-
-// Error query
 ErrorDetails *error_get_last(void);
-
-// Error classification
 bool error_is_recoverable(const ErrorDetails *error);
-bool error_requires_reset(const ErrorDetails *error);
-ErrorSeverity error_get_severity(uint32_t code);
 
-// Debug support
-void error_print_last(void);
-const char *error_severity_to_string(ErrorSeverity severity);
+// Validation functions
+bool error_code_in_range(ErrorType type, uint32_t code);
 const char *error_type_to_string(ErrorType type);
+const char *error_severity_to_string(ErrorSeverity severity);
 
-#endif // DESKTHANG_ERROR_H
+#endif // ERROR_H
