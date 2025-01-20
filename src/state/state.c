@@ -9,6 +9,8 @@
 #include "../protocol/command.h"
 #include "../protocol/transfer.h"
 #include "../debug/debug.h"
+#include "pico/stdlib.h"
+#include "pico/bootrom.h"
 
 // Forward declare hardware functions we need
 bool spi_is_configured(void);
@@ -437,8 +439,11 @@ bool validate_transfer(void) {
 }
 
 bool state_machine_handle_recovery(const ErrorDetails *error) {
-    RecoveryStrategy strategy = recovery_get_strategy(error);
+    if (!error) {
+        return false;
+    }
     
+    RecoveryStrategy strategy = recovery_get_strategy(error);
     char context[256];
     snprintf(context, sizeof(context),
              "Error: %s, Strategy: %s",
@@ -446,8 +451,30 @@ bool state_machine_handle_recovery(const ErrorDetails *error) {
              recovery_strategy_to_string(strategy));
     logging_write_with_context("StateMachine", "Recovery attempt", context);
     
-    // ... recovery logic ...
-    return true; // TODO: Implement actual recovery logic
+    switch (strategy) {
+        case RECOVERY_RETRY:
+            return state_machine_transition(STATE_SYNCING, CONDITION_RETRY);
+            
+        case RECOVERY_RESET_STATE:
+            return state_machine_transition(STATE_IDLE, CONDITION_RESET);
+            
+        case RECOVERY_REINIT:
+            if (error->type == ERROR_TYPE_HARDWARE) {
+                return state_machine_transition(STATE_DISPLAY_INIT, CONDITION_RESET);
+            } else {
+                return state_machine_transition(STATE_HARDWARE_INIT, CONDITION_RESET);
+            }
+            
+        case RECOVERY_REBOOT:
+            if (recovery_get_config()->allow_reboot) {
+                reset_usb_boot(0, 0);  // Use Pico SDK's reset function
+                return true; // Never reached
+            }
+            return false;
+            
+        default:
+            return false;
+    }
 }
 
 bool state_machine_validate_state(SystemState state) {

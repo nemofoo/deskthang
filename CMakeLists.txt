@@ -81,7 +81,13 @@ target_link_libraries(hardware
 )
 
 target_link_libraries(logging PRIVATE error hardware)
-target_link_libraries(recovery PRIVATE error logging)
+target_link_libraries(recovery 
+    PRIVATE 
+    error 
+    logging 
+    pico_stdlib 
+    pico_bootrom
+)
 target_link_libraries(packet PRIVATE error)
 target_link_libraries(command PRIVATE error packet)
 target_link_libraries(protocol PRIVATE error packet command)
@@ -94,6 +100,7 @@ target_link_libraries(state
     protocol 
     deskthang_debug
     pico_stdlib
+    pico_bootrom
     hardware_spi
     hardware_gpio
 )

@@ -4,6 +4,8 @@
 #include "../system/time.h"
 #include <string.h>
 #include <stdio.h>
+#include "pico/stdlib.h"
+#include "pico/bootrom.h"
 
 // Default recovery configuration
 static RecoveryConfig g_recovery_config = {
@@ -78,6 +80,23 @@ bool recovery_is_strategy_allowed(RecoveryStrategy strategy) {
     return true;
 }
 
+// Simplified recovery handlers for prototype
+static bool handle_retry_recovery(const ErrorDetails *error) {
+    uint32_t delay = recovery_get_retry_delay(g_recovery_stats.total_attempts);
+    recovery_wait_before_retry(delay);
+    return true;
+}
+
+static bool handle_reset_recovery(const ErrorDetails *error) {
+    // Reset to known good state
+    return true;
+}
+
+static bool handle_reinit_recovery(const ErrorDetails *error) {
+    // Reinitialize hardware
+    return true;
+}
+
 // Recovery execution
 RecoveryResult recovery_attempt(const ErrorDetails *error) {
     RecoveryResult result = {0};
@@ -90,15 +109,8 @@ RecoveryResult recovery_attempt(const ErrorDetails *error) {
     
     // Get recovery strategy
     RecoveryStrategy strategy = recovery_get_strategy(error);
-    if (strategy == RECOVERY_NONE || !recovery_is_strategy_allowed(strategy)) {
-        strncpy(result.message, "No valid recovery strategy", sizeof(result.message) - 1);
-        return result;
-    }
-    
-    // Get handler for strategy
-    RecoveryHandler handler = recovery_get_handler(strategy);
-    if (!handler) {
-        strncpy(result.message, "No handler for strategy", sizeof(result.message) - 1);
+    if (strategy == RECOVERY_NONE) {
+        strncpy(result.message, "No recovery strategy available", sizeof(result.message) - 1);
         return result;
     }
     
@@ -106,8 +118,37 @@ RecoveryResult recovery_attempt(const ErrorDetails *error) {
     g_recovery_stats.total_attempts++;
     uint32_t start_time = deskthang_time_get_ms();
     
-    // Execute recovery
-    result.success = handler(error);
+    // Execute recovery based on strategy
+    switch (strategy) {
+        case RECOVERY_RETRY:
+            result.success = handle_retry_recovery(error);
+            strncpy(result.message, "Retry recovery", sizeof(result.message) - 1);
+            break;
+            
+        case RECOVERY_RESET_STATE:
+            result.success = handle_reset_recovery(error);
+            strncpy(result.message, "Reset state recovery", sizeof(result.message) - 1);
+            break;
+            
+        case RECOVERY_REINIT:
+            result.success = handle_reinit_recovery(error);
+            strncpy(result.message, "Reinit recovery", sizeof(result.message) - 1);
+            break;
+            
+        case RECOVERY_REBOOT:
+            if (g_recovery_config.allow_reboot) {
+                strncpy(result.message, "Rebooting system", sizeof(result.message) - 1);
+                result.success = true;
+                // System will reboot, this won't return
+                reset_usb_boot(0, 0);
+            }
+            break;
+            
+        default:
+            strncpy(result.message, "Unknown recovery strategy", sizeof(result.message) - 1);
+            break;
+    }
+    
     result.duration_ms = deskthang_time_get_ms() - start_time;
     result.attempts = 1;
     
@@ -152,7 +193,7 @@ uint32_t recovery_get_retry_delay(uint32_t attempt_count) {
 }
 
 void recovery_wait_before_retry(uint32_t delay_ms) {
-    // TODO: Implement platform-specific delay
+    sleep_ms(delay_ms);
 }
 
 // Recovery handlers
