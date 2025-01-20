@@ -31,6 +31,7 @@ struct GC9A01_frame {
 };
 
 void GC9A01_init(void);
+void GC9A01_set_orientation(uint8_t orientation);
 void GC9A01_set_frame(struct GC9A01_frame frame);
 void GC9A01_write(const uint8_t *data, size_t len);
 void GC9A01_write_continue(const uint8_t *data, size_t len);

@@ -2,6 +2,7 @@
 #include "../error/logging.h"
 #include "../system/time.h"
 #include "../hardware/display.h"
+#include "../hardware/deskthang_spi.h"
 #include "../protocol/protocol.h"
 #include "../protocol/transfer.h"
 #include <stdio.h>

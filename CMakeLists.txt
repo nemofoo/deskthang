@@ -86,7 +86,17 @@ target_link_libraries(packet PRIVATE error)
 target_link_libraries(command PRIVATE error packet)
 target_link_libraries(protocol PRIVATE error packet command)
 target_link_libraries(system PRIVATE pico_stdlib)
-target_link_libraries(state PRIVATE error system logging protocol deskthang_debug)
+target_link_libraries(state 
+    PRIVATE 
+    error 
+    system 
+    logging 
+    protocol 
+    deskthang_debug
+    pico_stdlib
+    hardware_spi
+    hardware_gpio
+)
 target_link_libraries(deskthang_debug PRIVATE error logging system)
 
 # Main executable

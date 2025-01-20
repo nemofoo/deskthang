@@ -299,8 +299,8 @@
  */
 #define MESSAGE_PREFIX_LOG    "[LOG]"
 #define MESSAGE_PREFIX_ERROR  "[ERROR]"
-#define MESSAGE_FORMAT_LOG    "%s [%lu] %s: %s%s%s"  // prefix, timestamp, module, message, (context ? " " : ""), (context ? context : "")
-#define MESSAGE_FORMAT_ERROR  "%s [%lu] %s: %d - %s%s%s"  // prefix, timestamp, module, code, message, (context ? " " : ""), (context ? context : "")
+#define MESSAGE_FORMAT_LOG    "%s [%u] %s: %s%s%s"  // prefix, timestamp, module, message, (context ? " " : ""), (context ? context : "")
+#define MESSAGE_FORMAT_ERROR  "%s [%u] %s: %d - %s%s%s"  // prefix, timestamp, module, code, message, (context ? " " : ""), (context ? context : "")
 
 // Message buffer sizes
 #define MESSAGE_BUFFER_SIZE   MAX_PACKET_SIZE
@@ -317,4 +317,4 @@
 #define NACK_ERROR_OVERFLOW         0x20
 #define NACK_ERROR_TRANSMISSION     0x40
 
-#endif // DESKTHANG_CONSTANTS_H 
+#endif // DESKTHANG_CONSTANTS_H

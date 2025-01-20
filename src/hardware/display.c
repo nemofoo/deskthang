@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "../system/time.h"
 #include "display.h"
 #include "deskthang_gpio.h"

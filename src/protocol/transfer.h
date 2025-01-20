@@ -43,6 +43,7 @@ typedef struct {
     
     // Validation
     uint32_t last_sequence;    // Last sequence number
+    uint32_t last_checksum;    // Last valid checksum
     bool checksum_valid;       // Last chunk checksum valid
     
     // Error tracking
@@ -54,6 +55,7 @@ typedef struct {
 bool transfer_init(void);
 void transfer_reset(void);
 bool transfer_is_initialized(void);
+TransferContext *transfer_get_context(void);
 
 // Transfer control
 bool transfer_start(TransferMode mode, uint32_t total_size);

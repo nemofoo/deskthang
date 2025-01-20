@@ -20,6 +20,9 @@
 #define ERROR_PROTOCOL_OVERFLOW 2006
 #define ERROR_PROTOCOL_NACK_RECEIVED 2007
 
+// CRC32 table for checksum calculation
+extern const uint32_t crc32_table[256];
+
 typedef enum {
     PACKET_TYPE_SYNC = PACKET_SYNC_BYTE,
     PACKET_TYPE_SYNC_ACK = PACKET_SYNC_ACK_BYTE,

@@ -2,6 +2,7 @@
 #include "pico/stdlib.h"
 #include "hardware/hardware.h"
 #include "hardware/display.h"
+#include "hardware/serial.h"
 #include "protocol/protocol.h"
 #include "error/error.h"
 #include "error/logging.h"

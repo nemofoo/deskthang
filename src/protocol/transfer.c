@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "../error/logging.h"
+#include "packet.h"
 
 // Global transfer context
 static TransferContext g_transfer_context;
@@ -213,12 +214,36 @@ bool transfer_validate_chunk(const Packet *packet) {
 }
 
 bool transfer_validate_sequence(uint8_t sequence) {
-    return sequence == g_transfer_context.last_sequence + 1;
+    // Handle wraparound case
+    if (g_transfer_context.last_sequence == 255) {
+        if (sequence == 0) {
+            g_transfer_context.last_sequence = sequence;
+            return true;
+        }
+        return false;
+    }
+    
+    if (sequence == g_transfer_context.last_sequence + 1) {
+        g_transfer_context.last_sequence = sequence;
+        return true;
+    }
+    return false;
 }
 
 bool transfer_validate_checksum(const uint8_t *data, uint16_t length, uint32_t checksum) {
-    // TODO: Implement actual checksum validation
-    return true;
+    if (!data || length == 0) {
+        return false;
+    }
+    
+    uint32_t crc = 0xFFFFFFFF;
+    
+    for (uint16_t i = 0; i < length; i++) {
+        crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFF];
+    }
+    
+    crc = crc ^ 0xFFFFFFFF;
+    
+    return crc == checksum;
 }
 
 // Error handling
@@ -291,16 +316,40 @@ const char *transfer_state_to_string(TransferState state) {
 
 // Add these implementations
 bool transfer_buffer_available(void) {
-    // TODO: Implement proper buffer availability check
-    return true;
+    return g_transfer_context.buffer != NULL && 
+           g_transfer_context.buffer_size > 0 && 
+           g_transfer_context.buffer_offset < g_transfer_context.buffer_size;
 }
 
 bool transfer_sequence_valid(void) {
-    // TODO: Implement proper sequence validation
+    // Check if we're in a valid transfer state
+    if (g_transfer_context.state != TRANSFER_STATE_IN_PROGRESS &&
+        g_transfer_context.state != TRANSFER_STATE_STARTING) {
+        return false;
+    }
+    
+    // Check if we've received all expected chunks
+    if (g_transfer_context.chunks_received >= g_transfer_context.chunks_expected) {
+        return false;
+    }
+    
     return true;
 }
 
 bool transfer_checksum_valid(void) {
-    // TODO: Implement proper checksum validation  
-    return true;
+    // This is a higher-level function that validates the entire transfer buffer
+    if (!g_transfer_context.buffer || g_transfer_context.buffer_size == 0) {
+        return false;
+    }
+    
+    // Calculate CRC32 of entire buffer
+    uint32_t crc = 0xFFFFFFFF;
+    for (uint32_t i = 0; i < g_transfer_context.buffer_offset; i++) {
+        uint8_t byte = g_transfer_context.buffer[i];
+        crc = (crc >> 8) ^ crc32_table[(crc & 0xFF) ^ byte];
+    }
+    crc = crc ^ 0xFFFFFFFF;
+    
+    // Compare with stored checksum
+    return crc == g_transfer_context.last_checksum;
 }
