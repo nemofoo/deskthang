@@ -11,23 +11,102 @@ sequenceDiagram
     participant Host
     participant Device
     participant Display
+    participant StateMachine
+    participant ErrorHandler
+
+    Note over Device: Power On / USB Connect
+    activate Device
+    Device->>Device: stdio_init_all()
+    Device->>Device: Wait 2x BASE_TIMEOUT_MS
     
-    Note over Host,Device: Initial Connection
-    Host->>Device: SYNC Packet (PROTOCOL_VERSION)
-    Device->>Device: Validate Protocol Version
-    Device-->>Host: SYNC_ACK
+    Device->>Device: Initialize Error System
+    Device->>Device: Initialize Logging
+    Device->>Device: Initialize Recovery
     
-    Note over Host,Device: Connection Ready
-    Host->>Device: Command Packet
-    Device->>Device: Validate Command
-    Device-->>Host: ACK
+    Device->>StateMachine: Enter HARDWARE_INIT
+    StateMachine->>Device: Configure SPI/GPIO
     
-    Note over Host,Device: Error Example
-    Host->>Device: Invalid Command
-    Device->>Device: Detect Error
-    Device-->>Host: NACK
-    Device->>Device: Enter Error State
+    alt Hardware Init Success
+        StateMachine->>StateMachine: Transition to DISPLAY_INIT
+        StateMachine->>Display: Send Reset Sequence
+        StateMachine->>Display: Configure Display
+        
+        alt Display Init Success
+            StateMachine->>StateMachine: Transition to IDLE
+            Device-->>Host: Ready for Connection
+            
+            Host->>Device: SYNC Packet
+            Device->>StateMachine: Process SYNC
+            StateMachine->>StateMachine: Enter SYNCING
+            
+            alt Valid Protocol Version
+                Device-->>Host: SYNC_ACK
+                StateMachine->>StateMachine: Enter READY
+                Note over Host,Device: Connection Established
+            else Invalid Version
+                Device-->>Host: NACK
+                StateMachine->>ErrorHandler: Report Version Error
+                ErrorHandler->>StateMachine: Enter ERROR
+            end
+            
+        else Display Init Failed
+            StateMachine->>ErrorHandler: Report Display Error
+            ErrorHandler->>StateMachine: Enter ERROR
+        end
+        
+    else Hardware Init Failed
+        StateMachine->>ErrorHandler: Report Hardware Error
+        ErrorHandler->>StateMachine: Enter ERROR
+    end
+    
+    Note over StateMachine,ErrorHandler: Error Recovery Flow
+    
+    alt Error State
+        ErrorHandler->>ErrorHandler: Determine Recovery Strategy
+        
+        alt Can Retry
+            ErrorHandler->>ErrorHandler: Calculate Backoff
+            ErrorHandler->>StateMachine: Retry Previous State
+        else Need Reset
+            ErrorHandler->>StateMachine: Return to IDLE
+        else Fatal Error
+            ErrorHandler->>Device: Request Reboot
+        end
+    end
 ```
+
+#### Boot and Connection Sequence
+
+1. **Initial Boot**
+   - Device powers on via USB connection
+   - Initializes stdio with 2x BASE_TIMEOUT_MS delay for USB CDC
+   - Sets up core systems (error handling, logging, recovery)
+
+2. **Hardware Initialization**
+   - Enters HARDWARE_INIT state
+   - Configures SPI interface and GPIO pins
+   - Validates hardware configuration
+   - Transitions to DISPLAY_INIT on success
+
+3. **Display Setup**
+   - Sends reset sequence to display
+   - Configures display parameters
+   - Validates display response
+   - Transitions to IDLE on success
+
+4. **Connection Protocol**
+   - Host initiates with SYNC packet
+   - Device validates protocol version
+   - Responds with SYNC_ACK if valid
+   - Transitions to READY state
+   - Connection established
+
+5. **Error Recovery**
+   - Errors can occur at any stage
+   - Recovery strategy based on error type
+   - Supports retry with backoff
+   - Can reset to IDLE if needed
+   - Fatal errors trigger reboot
 
 ### 2. Image Transfer
 
@@ -320,7 +399,104 @@ bool transfer_manager_process_chunk(const uint8_t *data, size_t len) {
 - Cache frequently used data
 
 ### 6. Debug Support
-- Log all state changes
-- Track transition timing
-- Monitor resource usage
-- Record error contexts
+- Log all state changes with debug module
+- Track transition timing and duration
+- Monitor resource usage and buffer states
+- Record error contexts and recovery attempts
+- Collect performance metrics
+- Enable/disable debug features at runtime
+- Reset debug statistics as needed
+- Track state transition statistics:
+  - Most frequent states
+  - Failed transitions
+  - Average time in each state
+  - Recovery success rates
+- Buffer usage statistics:
+  - Peak usage
+  - Overflow counts
+  - Average utilization
+- Performance metrics:
+  - Operation timing
+  - Retry frequencies
+  - Error distribution
+  - Recovery durations
+
+### 7. State Machine Integration
+- Debug module hooks in state transitions
+- Performance monitoring of state actions
+- Resource tracking in entry/exit handlers
+- Validation failure logging
+- Error context enrichment
+- Recovery attempt tracking
+- Buffer overflow detection
+- Timing violation monitoring
+
+## Test Pattern Commands
+
+The device supports several built-in test patterns that can be triggered via single-byte commands over the serial interface. These patterns are useful for display testing, calibration, and diagnostics.
+
+### Available Commands
+
+| Command | ASCII | Description |
+|---------|-------|-------------|
+| `CMD_PATTERN_CHECKER` | '1' | Displays a black and white checkerboard pattern (20px squares) |
+| `CMD_PATTERN_STRIPE` | '2' | Displays vertical color bars showing 8 basic colors |
+| `CMD_PATTERN_GRADIENT` | '3' | Displays a smooth RGB gradient pattern |
+| `CMD_HELP` | 'H' | Shows available commands and their descriptions |
+
+### Host Interface
+
+To send a test pattern command from the host:
+
+1. Ensure the device is in the `STATE_COMMAND_PROCESSING` state
+2. Send a single byte containing the command character
+3. The device will respond with a status message indicating success or failure
+
+Example using a serial terminal:
+```bash
+# Show checkerboard pattern
+echo -n "1" > /dev/ttyACM0
+
+# Show color bars
+echo -n "2" > /dev/ttyACM0
+
+# Show gradient pattern
+echo -n "3" > /dev/ttyACM0
+
+# Show help
+echo -n "H" > /dev/ttyACM0
+```
+
+### Pattern Details
+
+1. **Checkerboard Pattern**
+   - Alternating black and white squares
+   - Square size: 20x20 pixels
+   - Tests contrast and edge sharpness
+   - Useful for checking display alignment
+
+2. **Color Bars Pattern**
+   - 8 vertical bars showing basic colors:
+   - Red, Green, Blue, Yellow, Magenta, Cyan, White, Black
+   - Tests color reproduction and gamma
+   - Useful for color calibration
+
+3. **Gradient Pattern**
+   - Smooth RGB gradient
+   - Red varies with X position
+   - Green varies with Y position
+   - Blue varies diagonally
+   - Tests color interpolation and banding
+
+### Error Handling
+
+If a pattern command fails, the device will:
+1. Set success status to false
+2. Return an error message
+3. Maintain the current display state
+
+Common error conditions:
+- Display not initialized
+- Invalid command state
+- Insufficient resources
+- Hardware communication failure

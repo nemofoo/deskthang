@@ -114,6 +114,61 @@ bool display_reset_complete(void);
 bool display_params_valid(void);
 bool display_responding(void);
 
+/**
+ * Test pattern types
+ */
+typedef enum {
+    TEST_PATTERN_COLOR_BARS,    // Vertical color bars
+    TEST_PATTERN_GRADIENT,      // Diagonal RGB gradient
+    TEST_PATTERN_CHECKERBOARD,  // Black and white checkerboard
+    TEST_PATTERN_SOLID         // Solid color fill
+} TestPattern;
+
+/**
+ * Draw a test pattern on the display
+ * @param pattern The test pattern to draw
+ * @param color Optional color parameter for solid fill (ignored for other patterns)
+ * @return true if successful, false otherwise
+ */
+bool display_draw_test_pattern(TestPattern pattern, uint16_t color);
+
+/**
+ * Draw vertical color bars
+ * Shows basic RGB colors in vertical stripes
+ * @return true if successful, false otherwise
+ */
+bool display_draw_color_bars(void);
+
+/**
+ * Draw diagonal RGB gradient
+ * Shows smooth transition between primary colors
+ * @return true if successful, false otherwise
+ */
+bool display_draw_gradient(void);
+
+/**
+ * Draw checkerboard pattern
+ * Shows alternating black and white squares
+ * @param square_size Size of each square in pixels
+ * @return true if successful, false otherwise
+ */
+bool display_draw_checkerboard(uint8_t square_size);
+
+/**
+ * Fill display with solid color
+ * @param color 16-bit RGB565 color value
+ * @return true if successful, false otherwise
+ */
+bool display_fill_solid(uint16_t color);
+
+// Display status checks
+bool display_is_responding(void);
+bool display_buffer_available(void);
+
+// Display operations
+void display_update(void);
+void display_set_pixel(uint16_t x, uint16_t y, uint16_t color);
+
 #ifdef __cplusplus
 }
 #endif

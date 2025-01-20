@@ -313,3 +313,56 @@ void GC9A01_write_continue(const uint8_t *data, size_t len) {
 void GC9A01_delay(uint16_t ms) {
     deskthang_delay_ms(ms);
 }
+
+void GC9A01_draw_pixel(uint16_t x, uint16_t y, uint16_t color) {
+    struct GC9A01_frame frame = {
+        .start = {x, y},
+        .end = {x, y}
+    };
+    GC9A01_set_frame(frame);
+    GC9A01_write_command(GC9A01_MEM_WR);
+    GC9A01_write_data((uint8_t*)&color, 2);
+}
+
+void GC9A01_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color) {
+    struct GC9A01_frame frame = {
+        .start = {x, y},
+        .end = {x + w - 1, y + h - 1}
+    };
+    GC9A01_set_frame(frame);
+
+    // Start memory write
+    GC9A01_write_command(GC9A01_MEM_WR);
+    
+    // Calculate total number of pixels
+    uint32_t total_pixels = w * h;
+    
+    // Write first pixel
+    GC9A01_write_data((uint8_t*)&color, 2);
+    
+    // Write remaining pixels using continue command
+    for(uint32_t i = 1; i < total_pixels; i++) {
+        GC9A01_write_continue((uint8_t*)&color, 2);
+    }
+}
+
+uint8_t GC9A01_read_status(void) {
+    uint8_t status = 0;
+    GC9A01_write_command(0x09); // Read Status
+    deskthang_spi_read(&status, 1);
+    return status;
+}
+
+uint8_t GC9A01_read_display_mode(void) {
+    uint8_t mode = 0;
+    GC9A01_write_command(0x0A); // Read Display Mode
+    deskthang_spi_read(&mode, 1);
+    return mode;
+}
+
+uint8_t GC9A01_read_memory_access(void) {
+    uint8_t access = 0;
+    GC9A01_write_command(0x0B); // Read Memory Access Control
+    deskthang_spi_read(&access, 1);
+    return access;
+}

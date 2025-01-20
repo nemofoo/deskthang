@@ -3,16 +3,24 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "../error/logging.h"
 
 // Global transfer context
 static TransferContext g_transfer_context;
 static TransferStatus g_transfer_status;
+static bool transfer_initialized = false;
 
 // Initialize transfer system
 bool transfer_init(void) {
     memset(&g_transfer_context, 0, sizeof(TransferContext));
-    memset(&g_transfer_status, 0, sizeof(TransferStatus));
+    g_transfer_context.mode = TRANSFER_MODE_NONE;
+    g_transfer_context.state = TRANSFER_STATE_IDLE;
+    transfer_initialized = true;
     return true;
+}
+
+bool transfer_is_initialized(void) {
+    return transfer_initialized;
 }
 
 // Reset transfer state

@@ -67,4 +67,11 @@ bool transfer_checksum_valid(void);
 bool protocol_is_initialized(void);
 bool protocol_is_synchronized(void);
 
+// Protocol status checks
+bool protocol_has_valid_sync(void);
+bool protocol_version_valid(void);
+bool protocol_has_valid_command(void);
+bool protocol_command_params_valid(void);
+bool protocol_command_resources_available(void);
+
 #endif // PROTOCOL_H

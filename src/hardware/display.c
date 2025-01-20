@@ -2,6 +2,7 @@
 #include "display.h"
 #include "deskthang_gpio.h"
 #include "deskthang_spi.h"
+#include "GC9A01.h"
 #include <string.h>
 
 // Static configuration
@@ -13,22 +14,28 @@ static struct {
 // Static hardware configuration
 static const HardwareConfig *hw_config = NULL;
 
+// Add at the top with other static variables
+static bool display_initialized = false;
+static uint8_t display_status = 0;
+static uint16_t display_buffer[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+static size_t buffer_used = 0;
+
 // GC9A01 HAL function implementations
 void GC9A01_set_reset(uint8_t val) {
     if (hw_config) {
-        display_gpio_set(hw_config->pins.rst, val);
+        deskthang_gpio_set(hw_config->pins.rst, val);
     }
 }
 
 void GC9A01_set_data_command(uint8_t val) {
     if (hw_config) {
-        display_gpio_set(hw_config->pins.dc, val);
+        deskthang_gpio_set(hw_config->pins.dc, val);
     }
 }
 
 void GC9A01_set_chip_select(uint8_t val) {
     if (hw_config) {
-        display_gpio_set(hw_config->pins.cs, val);
+        deskthang_gpio_set(hw_config->pins.cs, val);
     }
 }
 
@@ -67,6 +74,10 @@ bool display_init(const HardwareConfig *hw_config_in, const DisplayConfig *disp_
     }
 
     display_state.initialized = true;
+    display_initialized = true;
+    display_status = 0;
+    buffer_used = 0;
+    
     return true;
 }
 
@@ -77,6 +88,10 @@ void display_deinit(void) {
 
     // Clear state
     memset(&display_state, 0, sizeof(display_state));
+    
+    display_initialized = false;
+    display_status = 0;
+    buffer_used = 0;
 }
 
 bool display_set_orientation(DisplayOrientation orientation) {
@@ -175,7 +190,7 @@ const DisplayConfig* display_get_config(void) {
 }
 
 bool display_is_initialized(void) {
-    return display_state.initialized;
+    return display_initialized;
 }
 
 bool display_reset_complete(void) {
@@ -184,11 +199,140 @@ bool display_reset_complete(void) {
 }
 
 bool display_params_valid(void) {
-    // TODO: Implement parameter validation
+    if (!display_initialized) {
+        return false;
+    }
+    
+    // Check display configuration parameters
+    uint8_t display_mode = GC9A01_read_display_mode();
+    if ((display_mode & GC9A01_MODE_VALID_MASK) != GC9A01_MODE_EXPECTED) {
+        return false;
+    }
+    
+    // Check memory access mode
+    uint8_t mem_access = GC9A01_read_memory_access();
+    if ((mem_access & GC9A01_MEM_ACCESS_MASK) != GC9A01_MEM_ACCESS_EXPECTED) {
+        return false;
+    }
+    
     return true;
 }
 
 bool display_responding(void) {
     // TODO: Implement display response check
     return true;
+}
+
+bool display_draw_test_pattern(TestPattern pattern, uint16_t color) {
+    if (!display_state.initialized) {
+        return false;
+    }
+
+    switch (pattern) {
+        case TEST_PATTERN_COLOR_BARS:
+            return display_draw_color_bars();
+        case TEST_PATTERN_GRADIENT:
+            return display_draw_gradient();
+        case TEST_PATTERN_CHECKERBOARD:
+            return display_draw_checkerboard(20); // Default 20px squares
+        case TEST_PATTERN_SOLID:
+            return display_fill_solid(color);
+        default:
+            return false;
+    }
+}
+
+bool display_draw_color_bars(void) {
+    if (!display_state.initialized) {
+        return false;
+    }
+
+    const uint16_t colors[] = {
+        COLOR_RED,
+        COLOR_GREEN,
+        COLOR_BLUE,
+        COLOR_YELLOW,
+        COLOR_MAGENTA,
+        COLOR_CYAN,
+        COLOR_WHITE,
+        COLOR_BLACK
+    };
+    const uint8_t num_bars = sizeof(colors) / sizeof(colors[0]);
+    const uint16_t bar_width = DISPLAY_WIDTH / num_bars;
+
+    for (uint8_t i = 0; i < num_bars; i++) {
+        uint16_t x = i * bar_width;
+        GC9A01_fill_rect(x, 0, bar_width, DISPLAY_HEIGHT, colors[i]);
+    }
+
+    return true;
+}
+
+bool display_draw_gradient(void) {
+    if (!display_state.initialized) {
+        return false;
+    }
+
+    for (uint16_t y = 0; y < DISPLAY_HEIGHT; y++) {
+        for (uint16_t x = 0; x < DISPLAY_WIDTH; x++) {
+            // Calculate RGB components based on position
+            uint8_t r = (x * 255) / DISPLAY_WIDTH;
+            uint8_t g = (y * 255) / DISPLAY_HEIGHT;
+            uint8_t b = ((x + y) * 255) / (DISPLAY_WIDTH + DISPLAY_HEIGHT);
+            
+            uint16_t color = RGB565(r, g, b);
+            GC9A01_draw_pixel(x, y, color);
+        }
+    }
+
+    return true;
+}
+
+bool display_draw_checkerboard(uint8_t square_size) {
+    if (!display_state.initialized || square_size == 0) {
+        return false;
+    }
+
+    for (uint16_t y = 0; y < DISPLAY_HEIGHT; y += square_size) {
+        for (uint16_t x = 0; x < DISPLAY_WIDTH; x += square_size) {
+            uint16_t color = ((x / square_size + y / square_size) % 2) ? COLOR_BLACK : COLOR_WHITE;
+            uint16_t width = (x + square_size > DISPLAY_WIDTH) ? DISPLAY_WIDTH - x : square_size;
+            uint16_t height = (y + square_size > DISPLAY_HEIGHT) ? DISPLAY_HEIGHT - y : square_size;
+            GC9A01_fill_rect(x, y, width, height, color);
+        }
+    }
+
+    return true;
+}
+
+bool display_fill_solid(uint16_t color) {
+    if (!display_state.initialized) {
+        return false;
+    }
+
+    GC9A01_fill_rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, color);
+    return true;
+}
+
+// Display status checks
+bool display_is_responding(void) {
+    if (!display_initialized) {
+        return false;
+    }
+    
+    // Read display status register
+    uint8_t status = GC9A01_read_status();
+    display_status = status;
+    
+    // Check if display is ready
+    return (status & GC9A01_STATUS_READY) != 0;
+}
+
+bool display_buffer_available(void) {
+    return buffer_used < sizeof(display_buffer);
+}
+
+// Update buffer management functions
+void display_update_buffer_usage(size_t bytes_used) {
+    buffer_used = bytes_used;
 }

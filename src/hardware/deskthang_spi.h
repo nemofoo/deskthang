@@ -26,4 +26,7 @@ bool deskthang_spi_read(uint8_t *data, size_t len);
 bool deskthang_spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, size_t len);
 void deskthang_spi_chip_select(bool select);
 
+// SPI status check
+bool deskthang_spi_is_initialized(void);
+
 #endif // DESKTHANG_SPI_H 

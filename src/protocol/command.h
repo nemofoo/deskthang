@@ -11,6 +11,7 @@
 // Command types
 typedef enum {
     CMD_IMAGE_START = 'I',    // Start image transfer (RGB565 format, DISPLAY_WIDTH×DISPLAY_HEIGHT)
+    CMD_IMAGE_DATA = 'D',     // Image data chunk
     CMD_IMAGE_END = 'E',      // End image transfer
     CMD_PATTERN_CHECKER = '1', // Show checkerboard pattern
     CMD_PATTERN_STRIPE = '2',  // Show stripe pattern
@@ -24,6 +25,7 @@ typedef struct {
     uint32_t start_time;       // Command start timestamp
     uint32_t bytes_processed;  // Progress tracking
     uint32_t total_bytes;      // Should be TRANSFER_MAX_SIZE for image transfers
+    size_t data_size;         // Size of current data chunk
     bool in_progress;          // Command is active
     void *command_data;        // Command-specific data
 } CommandContext;

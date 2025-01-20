@@ -15,6 +15,9 @@ static struct {
     bool initialized;
 } spi_state = {0};
 
+// Add at the top with other static variables
+static bool spi_initialized = false;
+
 bool deskthang_spi_init(const DeskthangSPIConfig *config) {
     if (!config) {
         return false;
@@ -49,6 +52,7 @@ bool deskthang_spi_init(const DeskthangSPIConfig *config) {
                    SPI_MSB_FIRST);
 
     spi_state.initialized = true;
+    spi_initialized = true;
     return true;
 }
 
@@ -63,6 +67,7 @@ void deskthang_spi_deinit(void) {
     gpio_set_function(spi_state.miso_pin, GPIO_FUNC_NULL);
     gpio_init(spi_state.cs_pin);  // Reset CS pin
     spi_state.initialized = false;
+    spi_initialized = false;
 }
 
 bool deskthang_spi_write(const uint8_t *data, size_t len) {
@@ -107,4 +112,9 @@ void deskthang_spi_chip_select(bool select) {
     }
 
     gpio_put(spi_state.cs_pin, !select); // CS is active low
+}
+
+// Add initialization check function
+bool deskthang_spi_is_initialized(void) {
+    return spi_initialized;
 } 

@@ -1,6 +1,9 @@
 #include "transition.h"
 #include "../error/logging.h"
 #include "../system/time.h"
+#include "../hardware/display.h"
+#include "../protocol/protocol.h"
+#include "../protocol/transfer.h"
 #include <stdio.h>
 
 // Add at top of file after includes
@@ -61,27 +64,118 @@ static const StateTransition VALID_TRANSITIONS[] = {
 
 // Validation function implementations
 static bool validate_hardware_init(void) {
-    // TODO: Implement hardware initialization check
+    // Check SPI configuration
+    if (!deskthang_spi_is_initialized()) {
+        logging_write("State", "SPI not initialized");
+        return false;
+    }
+
+    // Check GPIO pins
+    if (!deskthang_gpio_is_initialized()) {
+        logging_write("State", "GPIO not initialized");
+        return false;
+    }
+
+    // Check timing requirements
+    if (!deskthang_time_is_initialized()) {
+        logging_write("State", "Timer not initialized");
+        return false;
+    }
+
     return true;
 }
 
 static bool validate_display_init(void) {
-    // TODO: Implement display initialization check
+    // Check if display is initialized
+    if (!display_is_initialized()) {
+        logging_write("State", "Display not initialized");
+        return false;
+    }
+
+    // Check if display is responding
+    if (!display_is_responding()) {
+        logging_write("State", "Display not responding");
+        return false;
+    }
+
+    // Check if display parameters are valid
+    if (!display_params_valid()) {
+        logging_write("State", "Display parameters invalid");
+        return false;
+    }
+
     return true;
 }
 
 static bool validate_sync_request(void) {
-    // TODO: Implement sync request validation
+    // Check if protocol is initialized
+    if (!protocol_is_initialized()) {
+        logging_write("State", "Protocol not initialized");
+        return false;
+    }
+
+    // Check if we have a valid SYNC packet
+    if (!protocol_has_valid_sync()) {
+        logging_write("State", "No valid SYNC packet");
+        return false;
+    }
+
+    // Check protocol version
+    if (!protocol_version_valid()) {
+        logging_write("State", "Protocol version mismatch");
+        return false;
+    }
+
     return true;
 }
 
 static bool validate_command(void) {
-    // TODO: Implement command validation
+    // Check if we have a valid command
+    if (!protocol_has_valid_command()) {
+        logging_write("State", "No valid command");
+        return false;
+    }
+
+    // Check command parameters
+    if (!protocol_command_params_valid()) {
+        logging_write("State", "Invalid command parameters");
+        return false;
+    }
+
+    // Check if we have resources for command
+    if (!protocol_command_resources_available()) {
+        logging_write("State", "Insufficient resources for command");
+        return false;
+    }
+
     return true;
 }
 
 static bool validate_transfer(void) {
-    // TODO: Implement transfer validation
+    // Check if transfer is initialized
+    if (!transfer_is_initialized()) {
+        logging_write("State", "Transfer not initialized");
+        return false;
+    }
+
+    // Check if we have buffer space
+    if (!transfer_buffer_available()) {
+        logging_write("State", "Transfer buffer full");
+        return false;
+    }
+
+    // Check sequence numbers
+    if (!transfer_sequence_valid()) {
+        logging_write("State", "Invalid transfer sequence");
+        return false;
+    }
+
+    // Check checksums
+    if (!transfer_checksum_valid()) {
+        logging_write("State", "Invalid transfer checksum");
+        return false;
+    }
+
     return true;
 }
 

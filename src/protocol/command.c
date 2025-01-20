@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "../hardware/display.h"
 
 // Global command context
 static CommandContext g_command_context = {0};
@@ -55,6 +56,22 @@ bool command_process(const uint8_t *data, size_t len) {
             
         case CMD_IMAGE_END:
             result = command_end_image_transfer();
+            break;
+            
+        case CMD_PATTERN_CHECKER:
+            result = command_show_checkerboard();
+            break;
+            
+        case CMD_PATTERN_STRIPE:
+            result = command_show_stripes();
+            break;
+            
+        case CMD_PATTERN_GRADIENT:
+            result = command_show_gradient();
+            break;
+            
+        case CMD_HELP:
+            result = command_show_help();
             break;
             
         default:
@@ -153,18 +170,21 @@ bool command_end_image_transfer(void) {
 
 // Pattern commands
 bool command_show_checkerboard(void) {
-    // TODO: Implement checkerboard pattern
-    return true;
+    bool result = display_draw_test_pattern(TEST_PATTERN_CHECKERBOARD, 0);
+    command_set_status(result, result ? "Checkerboard pattern displayed" : "Failed to display checkerboard pattern");
+    return result;
 }
 
 bool command_show_stripes(void) {
-    // TODO: Implement stripe pattern
-    return true;
+    bool result = display_draw_test_pattern(TEST_PATTERN_COLOR_BARS, 0);
+    command_set_status(result, result ? "Color bars pattern displayed" : "Failed to display color bars pattern");
+    return result;
 }
 
 bool command_show_gradient(void) {
-    // TODO: Implement gradient pattern
-    return true;
+    bool result = display_draw_test_pattern(TEST_PATTERN_GRADIENT, 0);
+    command_set_status(result, result ? "Gradient pattern displayed" : "Failed to display gradient pattern");
+    return result;
 }
 
 // Help command

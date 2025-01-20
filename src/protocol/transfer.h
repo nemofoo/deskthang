@@ -50,10 +50,10 @@ typedef struct {
     uint32_t retry_count;      // Number of retries
 } TransferContext;
 
-// Transfer initialization and management
+// Core transfer functions
 bool transfer_init(void);
 void transfer_reset(void);
-TransferContext *transfer_get_context(void);
+bool transfer_is_initialized(void);
 
 // Transfer control
 bool transfer_start(TransferMode mode, uint32_t total_size);

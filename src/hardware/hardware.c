@@ -17,7 +17,7 @@ bool hardware_init(const HardwareConfig *config) {
     memcpy(&hw_config, config, sizeof(HardwareConfig));
     
     // Initialize GPIO first
-    if (!display_gpio_init(&hw_config)) {
+    if (!deskthang_gpio_init(&hw_config)) {
         return false;
     }
     
@@ -32,7 +32,7 @@ bool hardware_init(const HardwareConfig *config) {
     };
     
     if (!deskthang_spi_init(&spi_config)) {
-        display_gpio_deinit();
+        deskthang_gpio_deinit();
         return false;
     }
     
@@ -50,7 +50,7 @@ void hardware_deinit(void) {
     
     // Deinitialize in reverse order
     deskthang_spi_deinit();
-    display_gpio_deinit();
+    deskthang_gpio_deinit();
     
     // Clear state
     memset(&hw_config, 0, sizeof(HardwareConfig));

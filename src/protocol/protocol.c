@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include "../state/state.h"
 #include "../system/time.h"
+#include <stdio.h>
+#include "../protocol/command.h"
+#include "../hardware/display.h"
 
 // Error codes
 #define ERROR_INVALID_VERSION 1
@@ -18,6 +21,14 @@ static ErrorDetails g_error_context;
 static bool handle_sync_packet(const Packet *packet);
 static bool handle_command_packet(const Packet *packet);
 static bool handle_data_packet(const Packet *packet);
+static bool handle_sync_ack_packet(const Packet *packet);
+
+// Add at the top with other static variables
+static bool protocol_initialized = false;
+static bool has_valid_sync = false;
+static bool has_valid_command = false;
+static uint8_t current_protocol_version = 0;
+static CommandContext command_context = {0};
 
 // Initialize protocol
 bool protocol_init(const ProtocolConfig *config) {
@@ -50,6 +61,12 @@ bool protocol_init(const ProtocolConfig *config) {
     // Clear error context
     memset(&g_error_context, 0, sizeof(ErrorDetails));
     
+    protocol_initialized = true;
+    has_valid_sync = false;
+    has_valid_command = false;
+    current_protocol_version = 0;
+    memset(&command_context, 0, sizeof(command_context));
+    
     return true;
 }
 
@@ -74,6 +91,12 @@ void protocol_deinit(void) {
     
     // Clear error context
     protocol_clear_error();
+    
+    protocol_initialized = false;
+    has_valid_sync = false;
+    has_valid_command = false;
+    current_protocol_version = 0;
+    memset(&command_context, 0, sizeof(command_context));
 }
 
 // Error handling
@@ -208,20 +231,70 @@ bool protocol_process_packet(const Packet *packet) {
     // Process based on packet type
     switch (packet->header.type) {
         case PACKET_TYPE_SYNC:
-            return handle_sync_packet(packet);
+            has_valid_sync = handle_sync_packet(packet);
+            if (has_valid_sync) {
+                current_protocol_version = packet->payload[0];
+            }
+            break;
+        case PACKET_TYPE_SYNC_ACK:
+            return handle_sync_ack_packet(packet);
         case PACKET_TYPE_CMD:
-            return handle_command_packet(packet);
+            has_valid_command = handle_command_packet(packet);
+            if (has_valid_command) {
+                memcpy(&command_context, packet->payload, sizeof(CommandContext));
+            }
+            break;
         case PACKET_TYPE_DATA:
             return handle_data_packet(packet);
         default:
             protocol_set_error(ERROR_TYPE_PROTOCOL, "Unknown packet type");
             return false;
     }
+
+    return true;
 }
 
 // Add implementations
 static bool handle_sync_packet(const Packet *packet) {
-    // TODO: Implement sync packet handling
+    if (!packet || packet->header.type != PACKET_TYPE_SYNC) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Invalid SYNC packet");
+        return false;
+    }
+
+    // Validate protocol version
+    uint8_t version = packet->payload[0];
+    if (!protocol_validate_version(version)) {
+        char context[64];
+        snprintf(context, sizeof(context), "Expected v%d, got v%d", PROTOCOL_VERSION, version);
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Protocol version mismatch");
+        
+        // Send NACK for version mismatch
+        Packet nack;
+        if (packet_create_nack(&nack, packet->header.sequence)) {
+            packet_transmit(&nack);
+        }
+        return false;
+    }
+
+    // Reset protocol state for new connection
+    protocol_reset();
+    g_protocol_config.sequence = packet->header.sequence;
+
+    // Create and send SYNC_ACK response
+    Packet sync_ack;
+    if (!packet_create_sync_ack(&sync_ack)) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Failed to create SYNC_ACK");
+        return false;
+    }
+
+    // Transmit SYNC_ACK
+    if (!packet_transmit(&sync_ack)) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Failed to transmit SYNC_ACK");
+        return false;
+    }
+
+    // Update protocol state to synchronized
+    g_protocol_config.version = version;
     return true;
 }
 
@@ -235,7 +308,101 @@ static bool handle_data_packet(const Packet *packet) {
     return true;
 }
 
+static bool handle_sync_ack_packet(const Packet *packet) {
+    if (!packet || packet->header.type != PACKET_TYPE_SYNC_ACK) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Invalid SYNC_ACK packet");
+        return false;
+    }
+
+    // Validate protocol version in response
+    uint8_t version = packet->payload[0];
+    if (!protocol_validate_version(version)) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Protocol version mismatch in SYNC_ACK");
+        return false;
+    }
+
+    // Validate sequence number matches our SYNC
+    if (!protocol_validate_sequence(packet->header.sequence)) {
+        protocol_set_error(ERROR_TYPE_PROTOCOL, "Invalid sequence in SYNC_ACK");
+        return false;
+    }
+
+    // Update protocol state
+    g_protocol_config.version = version;
+    g_protocol_config.sequence = packet->header.sequence;
+
+    return true;
+}
+
 bool protocol_timing_valid(void) {
     // TODO: Implement proper validation
     return true;
+}
+
+bool protocol_is_synchronized(void) {
+    // Protocol is synchronized if:
+    // 1. It is initialized
+    // 2. Version matches
+    // 3. No active errors
+    return protocol_is_initialized() && 
+           g_protocol_config.version == PROTOCOL_VERSION &&
+           g_error_context.type == ERROR_TYPE_NONE;
+}
+
+bool protocol_is_initialized(void) {
+    return protocol_initialized;
+}
+
+bool protocol_has_valid_sync(void) {
+    return has_valid_sync;
+}
+
+bool protocol_version_valid(void) {
+    return current_protocol_version == PROTOCOL_VERSION;
+}
+
+bool protocol_has_valid_command(void) {
+    return has_valid_command;
+}
+
+bool protocol_command_params_valid(void) {
+    if (!has_valid_command) {
+        return false;
+    }
+    
+    // Check command parameters based on command type
+    switch (command_context.type) {
+        case CMD_PATTERN_CHECKER:
+        case CMD_PATTERN_STRIPE:
+        case CMD_PATTERN_GRADIENT:
+            return true;  // These commands have no parameters
+            
+        case CMD_IMAGE_DATA:
+            return command_context.data_size > 0 && 
+                   command_context.data_size <= MAX_PACKET_SIZE;
+            
+        default:
+            return false;
+    }
+}
+
+bool protocol_command_resources_available(void) {
+    if (!has_valid_command) {
+        return false;
+    }
+    
+    // Check resource requirements based on command type
+    switch (command_context.type) {
+        case CMD_PATTERN_CHECKER:
+        case CMD_PATTERN_STRIPE:
+        case CMD_PATTERN_GRADIENT:
+            return display_buffer_available();
+            
+        case CMD_IMAGE_DATA:
+            return transfer_buffer_available() && 
+                   display_buffer_available();
+            
+        default:
+            return false;
+    }
 }
