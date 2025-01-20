@@ -132,14 +132,6 @@ bool transfer_complete(void) {
         case TRANSFER_MODE_IMAGE:
             success = transfer_process_image();
             break;
-        case TRANSFER_MODE_FIRMWARE:
-            // Not implemented yet
-            success = false;
-            break;
-        case TRANSFER_MODE_CONFIG:
-            // Not implemented yet
-            success = false;
-            break;
         default:
             success = false;
             break;
@@ -415,8 +407,6 @@ const char *transfer_mode_to_string(TransferMode mode) {
     switch (mode) {
         case TRANSFER_MODE_NONE:     return "NONE";
         case TRANSFER_MODE_IMAGE:    return "IMAGE";
-        case TRANSFER_MODE_FIRMWARE: return "FIRMWARE";
-        case TRANSFER_MODE_CONFIG:   return "CONFIG";
         default:                     return "UNKNOWN";
     }
 }

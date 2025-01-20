@@ -82,19 +82,21 @@ bool display_init(const HardwareConfig *hw_config_in, const DisplayConfig *disp_
         printf("Display Error: Failed to draw test pattern\n");
         return false;
     }
-
+    deskthang_delay_ms(2000);  // 2 second delay
 
     printf("Display: Drawing test pattern 2\n");
     if (!display_draw_test_pattern(TEST_PATTERN_GRADIENT, 0)) {
         printf("Display Error: Failed to draw test pattern\n");
         return false;
     }
+    deskthang_delay_ms(2000);  // 2 second delay
 
     printf("Display: Drawing test pattern 3\n");
     if (!display_draw_test_pattern(TEST_PATTERN_CHECKERBOARD, 1)) {
         printf("Display Error: Failed to draw test pattern\n");
         return false;
     }
+    deskthang_delay_ms(2000);  // 2 second delay
 
     buffer_used = 0;
     return true;

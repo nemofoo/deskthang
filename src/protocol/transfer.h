@@ -10,8 +10,6 @@
 typedef enum {
     TRANSFER_MODE_NONE,
     TRANSFER_MODE_IMAGE,      // RGB565 image transfer
-    TRANSFER_MODE_FIRMWARE,   // Future: firmware update
-    TRANSFER_MODE_CONFIG      // Future: configuration update
 } TransferMode;
 
 // Transfer state
