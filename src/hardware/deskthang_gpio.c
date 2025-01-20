@@ -11,12 +11,21 @@ bool deskthang_gpio_init(const HardwareConfig *config) {
         return false;
     }
 
-    // Set all pins as outputs
+    // Initialize all pins first
+    gpio_init(config->pins.rst);
+    gpio_init(config->pins.dc);
+    gpio_init(config->pins.cs);
+    gpio_init(config->pins.sck);
+    gpio_init(config->pins.mosi);
+
+    // Set GPIO functions for display control pins
     gpio_set_dir(config->pins.rst, GPIO_OUT);
     gpio_set_dir(config->pins.dc, GPIO_OUT);
     gpio_set_dir(config->pins.cs, GPIO_OUT);
-    gpio_set_dir(config->pins.sck, GPIO_OUT);
-    gpio_set_dir(config->pins.mosi, GPIO_OUT);
+
+    // Set SPI functions for SPI pins
+    gpio_set_function(config->pins.sck, GPIO_FUNC_SPI);
+    gpio_set_function(config->pins.mosi, GPIO_FUNC_SPI);
 
     // Set initial pin states
     gpio_put(config->pins.rst, 1);  // Reset high

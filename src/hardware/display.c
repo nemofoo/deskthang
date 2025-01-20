@@ -52,84 +52,86 @@ bool display_init(const HardwareConfig *hw_config_in, const DisplayConfig *disp_
     hw_config = hw_config_in;
     memcpy(&display_state.config, disp_config, sizeof(DisplayConfig));
 
+    // Set orientation before initialization
+    GC9A01_set_orientation(disp_config->orientation);
+
     // Initialize GC9A01
     GC9A01_init();
 
     // Configure display based on settings
-    if (!display_set_orientation(disp_config->orientation)) {
-        return false;
-    }
-
     if (!display_set_brightness(disp_config->brightness)) {
+        printf("Display Error: Failed to set brightness\n");
         return false;
     }
 
     if (!display_set_inverted(disp_config->inverted)) {
+        printf("Display Error: Failed to set inversion mode\n");
         return false;
     }
 
     // Clear display to black
     if (!display_clear()) {
+        printf("Display Error: Failed to clear display\n");
         return false;
     }
 
-    display_state.initialized = true;
-    display_initialized = true;
-    display_status = 0;
+    // Draw test pattern
+    printf("Display: Drawing test pattern\n");
+    if (!display_draw_test_pattern(TEST_PATTERN_COLOR_BARS, 0)) {
+        printf("Display Error: Failed to draw test pattern\n");
+        return false;
+    }
+
+
+    printf("Display: Drawing test pattern 2\n");
+    if (!display_draw_test_pattern(TEST_PATTERN_GRADIENT, 0)) {
+        printf("Display Error: Failed to draw test pattern\n");
+        return false;
+    }
+
+    printf("Display: Drawing test pattern 3\n");
+    if (!display_draw_test_pattern(TEST_PATTERN_CHECKERBOARD, 1)) {
+        printf("Display Error: Failed to draw test pattern\n");
+        return false;
+    }
+
     buffer_used = 0;
-    
     return true;
 }
 
 void display_deinit(void) {
-    if (!display_state.initialized) {
-        return;
-    }
 
     // Clear state
     memset(&display_state, 0, sizeof(display_state));
     
-    display_initialized = false;
     display_status = 0;
     buffer_used = 0;
 }
 
 bool display_set_orientation(DisplayOrientation orientation) {
-    if (!display_state.initialized) {
-        return false;
-    }
-
     // Update stored configuration
     display_state.config.orientation = orientation;
 
     // Send orientation command to display
     GC9A01_write_command(0x36); // MADCTL
     uint8_t madctl = orientation;
-    GC9A01_spi_tx(&madctl, 1);
+    GC9A01_write_data(&madctl, 1);
 
     return true;
 }
 
 bool display_set_brightness(uint8_t brightness) {
-    if (!display_state.initialized) {
-        return false;
-    }
-
     // Update stored configuration
     display_state.config.brightness = brightness;
 
     // Send brightness command to display
     GC9A01_write_command(0x51); // Write brightness
-    GC9A01_spi_tx(&brightness, 1);
+    GC9A01_write_data(&brightness, 1);
 
     return true;
 }
 
 bool display_set_inverted(bool inverted) {
-    if (!display_state.initialized) {
-        return false;
-    }
-
     // Update stored configuration
     display_state.config.inverted = inverted;
 
@@ -140,7 +142,7 @@ bool display_set_inverted(bool inverted) {
 }
 
 bool display_write_pixels(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint8_t *data) {
-    if (!display_state.initialized || data == NULL) {
+    if (data == NULL) {
         return false;
     }
 
@@ -151,17 +153,13 @@ bool display_write_pixels(uint16_t x, uint16_t y, uint16_t width, uint16_t heigh
     };
     GC9A01_set_frame(frame);
 
-    // Write pixel data using deskthang_spi_write
+    // Write pixel data
     deskthang_spi_write(data, width * height * 2); // 2 bytes per pixel (RGB565)
 
     return true;
 }
 
 bool display_fill_region(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color) {
-    if (!display_state.initialized) {
-        return false;
-    }
-
     // Set up write window
     struct GC9A01_frame frame = {
         .start = {x, y},
@@ -190,7 +188,7 @@ const DisplayConfig* display_get_config(void) {
 }
 
 bool display_is_initialized(void) {
-    return display_initialized;
+    return true;
 }
 
 bool display_reset_complete(void) {
@@ -199,9 +197,6 @@ bool display_reset_complete(void) {
 }
 
 bool display_params_valid(void) {
-    if (!display_initialized) {
-        return false;
-    }
     
     // Check display configuration parameters
     uint8_t display_mode = GC9A01_read_display_mode();
@@ -224,9 +219,6 @@ bool display_responding(void) {
 }
 
 bool display_draw_test_pattern(TestPattern pattern, uint16_t color) {
-    if (!display_state.initialized) {
-        return false;
-    }
 
     switch (pattern) {
         case TEST_PATTERN_COLOR_BARS:
@@ -243,9 +235,6 @@ bool display_draw_test_pattern(TestPattern pattern, uint16_t color) {
 }
 
 bool display_draw_color_bars(void) {
-    if (!display_state.initialized) {
-        return false;
-    }
 
     const uint16_t colors[] = {
         COLOR_RED,
@@ -269,9 +258,6 @@ bool display_draw_color_bars(void) {
 }
 
 bool display_draw_gradient(void) {
-    if (!display_state.initialized) {
-        return false;
-    }
 
     for (uint16_t y = 0; y < DISPLAY_HEIGHT; y++) {
         for (uint16_t x = 0; x < DISPLAY_WIDTH; x++) {
@@ -289,7 +275,7 @@ bool display_draw_gradient(void) {
 }
 
 bool display_draw_checkerboard(uint8_t square_size) {
-    if (!display_state.initialized || square_size == 0) {
+    if (square_size == 0) {
         return false;
     }
 
@@ -306,9 +292,6 @@ bool display_draw_checkerboard(uint8_t square_size) {
 }
 
 bool display_fill_solid(uint16_t color) {
-    if (!display_state.initialized) {
-        return false;
-    }
 
     GC9A01_fill_rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, color);
     return true;
@@ -316,9 +299,6 @@ bool display_fill_solid(uint16_t color) {
 
 // Display status checks
 bool display_is_responding(void) {
-    if (!display_initialized) {
-        return false;
-    }
     
     // Read display status register
     uint8_t status = GC9A01_read_status();

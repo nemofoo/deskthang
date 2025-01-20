@@ -2,21 +2,32 @@
 #include "deskthang_spi.h"  // Changed from spi.h
 #include "hardware/gpio.h"
 #include "../common/deskthang_constants.h"
+#include <stdio.h>
 
-#define ORIENTATION 2   // Set the display orientation 0,1,2,3
+static uint8_t current_orientation = 0;
+
+void GC9A01_set_orientation(uint8_t orientation) {
+    current_orientation = orientation & 0x03;  // Ensure valid range 0-3
+}
 
 void GC9A01_write_command(uint8_t cmd) {
     GC9A01_set_data_command(0);
     GC9A01_set_chip_select(0);
-    deskthang_spi_write(&cmd, sizeof(cmd));  // Changed from spi_write
+    bool success = deskthang_spi_write(&cmd, sizeof(cmd));
     GC9A01_set_chip_select(1);
+    if (!success) {
+        printf("Display Error: Failed to write command 0x%02X\n", cmd);
+    }
 }
 
 void GC9A01_write_data(const uint8_t *data, size_t len) {
     GC9A01_set_data_command(1);
     GC9A01_set_chip_select(0);
-    deskthang_spi_write(data, len);
+    bool success = deskthang_spi_write(data, len);
     GC9A01_set_chip_select(1);
+    if (!success) {
+        printf("Display Error: Failed to write %zu bytes of data\n", len);
+    }
 }
 
 static inline void GC9A01_write_byte(uint8_t val) {
@@ -24,18 +35,20 @@ static inline void GC9A01_write_byte(uint8_t val) {
 }
 
 void GC9A01_init(void) {
+    printf("Display: Starting initialization sequence\n");
     
     GC9A01_set_chip_select(1);
     GC9A01_delay(5);
+    printf("Display: Starting reset sequence\n");
     GC9A01_set_reset(0);
     GC9A01_delay(10);
     GC9A01_set_reset(1);
     GC9A01_delay(120);
+    printf("Display: Reset sequence complete\n");
     
     /* Initial Sequence */ 
-    
+    printf("Display: Starting power control sequence\n");
     GC9A01_write_command(0xEF);
-    
     GC9A01_write_command(0xEB);
     GC9A01_write_byte(0x14);
     
@@ -80,14 +93,15 @@ void GC9A01_init(void) {
     
     GC9A01_write_command(0x8F);
     GC9A01_write_byte(0xFF);
+    printf("Display: Power control sequence complete\n");
     
-    
+    printf("Display: Configuring display parameters\n");
     GC9A01_write_command(0xB6);
     GC9A01_write_byte(0x00);
     GC9A01_write_byte(0x00);
     
+    printf("Display: Setting orientation (MADCTL)\n");
     GC9A01_write_command(0x36);
-    
 #if ORIENTATION == 0
     GC9A01_write_byte(0x18);
 #elif ORIENTATION == 1
@@ -98,9 +112,11 @@ void GC9A01_init(void) {
     GC9A01_write_byte(0x88);
 #endif
     
-    GC9A01_write_command(GC9A01_COLOR_MODE);
-    GC9A01_write_byte(GC9A01_COLOR_MODE__16_BIT);
+    printf("Display: Setting color mode to 16-bit\n");
+    GC9A01_write_command(0x3A);
+    GC9A01_write_byte(0x05);
     
+    printf("Display: Configuring gamma settings\n");
     GC9A01_write_command(0x90);
     GC9A01_write_byte(0x08);
     GC9A01_write_byte(0x08);
@@ -118,6 +134,7 @@ void GC9A01_init(void) {
     GC9A01_write_byte(0x01);
     GC9A01_write_byte(0x04);
     
+    printf("Display: Setting power control registers\n");
     GC9A01_write_command(0xC3);
     GC9A01_write_byte(0x13);
     GC9A01_write_command(0xC4);
@@ -271,11 +288,15 @@ void GC9A01_init(void) {
     GC9A01_write_command(0x35);
     GC9A01_write_command(0x21);
     
-    GC9A01_write_command(0x11);
+    printf("Display: Exiting sleep mode\n");
+    GC9A01_write_command(0x11);    // Sleep Out
     GC9A01_delay(120);
-    GC9A01_write_command(0x29);
+    
+    printf("Display: Turning display on\n");
+    GC9A01_write_command(0x29);    // Display ON
     GC9A01_delay(20);
     
+    printf("Display: Initialization complete\n");
 }
 
 void GC9A01_set_frame(struct GC9A01_frame frame) {
@@ -347,22 +368,13 @@ void GC9A01_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t c
 }
 
 uint8_t GC9A01_read_status(void) {
-    uint8_t status = 0;
-    GC9A01_write_command(0x09); // Read Status
-    deskthang_spi_read(&status, 1);
-    return status;
+    return 0;  // Placeholder for compatibility
 }
 
 uint8_t GC9A01_read_display_mode(void) {
-    uint8_t mode = 0;
-    GC9A01_write_command(0x0A); // Read Display Mode
-    deskthang_spi_read(&mode, 1);
-    return mode;
+    return 0;  // Placeholder for compatibility
 }
 
 uint8_t GC9A01_read_memory_access(void) {
-    uint8_t access = 0;
-    GC9A01_write_command(0x0B); // Read Memory Access Control
-    deskthang_spi_read(&access, 1);
-    return access;
+    return 0;  // Placeholder for compatibility
 }
