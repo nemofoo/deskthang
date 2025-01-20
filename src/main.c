@@ -10,19 +10,19 @@
 
 // Hardware configuration
 static const HardwareConfig hw_config = {
-    .spi_port = 0,
-    .spi_baud = 10000000,  // 10MHz
+    .spi_port = DISPLAY_SPI_PORT,
+    .spi_baud = DISPLAY_SPI_BAUD,
     .pins = {
-        .mosi = 19,
-        .sck = 18,
-        .cs = 17,
-        .dc = 16,
-        .rst = 20
+        .mosi = DISPLAY_PIN_MOSI,
+        .sck = DISPLAY_PIN_SCK,
+        .cs = DISPLAY_PIN_CS,
+        .dc = DISPLAY_PIN_DC,
+        .rst = DISPLAY_PIN_RST
     },
     .timing = {
-        .reset_pulse_us = 10000,   // 10ms reset pulse
-        .init_delay_ms = 120,      // 120ms init delay
-        .cmd_delay_us = 10         // 10us command delay
+        .reset_pulse_us = DISPLAY_RESET_PULSE_US,
+        .init_delay_ms = DISPLAY_INIT_DELAY_MS,
+        .cmd_delay_us = DISPLAY_CMD_DELAY_US
     }
 };
 
@@ -131,7 +131,11 @@ int main() {
                 ErrorDetails *error = error_get_last();
                 if (error && error_is_recoverable(error)) {
                     RecoveryResult result = recovery_attempt(error);
-                    logging_recovery(&result);
+                    // Log recovery attempt
+                    char context[MESSAGE_CONTEXT_SIZE];
+                    snprintf(context, sizeof(context), "Duration: %ums, Attempts: %u",
+                            result.duration_ms, result.attempts);
+                    logging_write_with_context("Recovery", result.message, context);
                 }
             }
         }
@@ -141,7 +145,11 @@ int main() {
         if (error) {
             if (error_is_recoverable(error)) {
                 RecoveryResult result = recovery_attempt(error);
-                logging_recovery(&result);
+                // Log recovery attempt
+                char context[MESSAGE_CONTEXT_SIZE];
+                snprintf(context, sizeof(context), "Duration: %ums, Attempts: %u",
+                        result.duration_ms, result.attempts);
+                logging_write_with_context("Recovery", result.message, context);
             } else if (error_requires_reset(error)) {
                 logging_write("Main", "Fatal error, resetting system");
                 hardware_reset();

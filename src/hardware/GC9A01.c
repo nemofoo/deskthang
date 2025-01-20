@@ -1,6 +1,7 @@
 #include "GC9A01.h"
 #include "deskthang_spi.h"  // Changed from spi.h
 #include "hardware/gpio.h"
+#include "../common/deskthang_constants.h"
 
 #define ORIENTATION 2   // Set the display orientation 0,1,2,3
 
@@ -98,7 +99,7 @@ void GC9A01_init(void) {
 #endif
     
     GC9A01_write_command(GC9A01_COLOR_MODE);
-    GC9A01_write_byte(COLOR_MODE__16_BIT);
+    GC9A01_write_byte(GC9A01_COLOR_MODE__16_BIT);
     
     GC9A01_write_command(0x90);
     GC9A01_write_byte(0x08);
@@ -305,7 +306,7 @@ void GC9A01_write(const uint8_t *data, size_t len) {
 }
 
 void GC9A01_write_continue(const uint8_t *data, size_t len) {
-    GC9A01_write_command(MEM_WR_CONT);
+    GC9A01_write_command(GC9A01_MEM_WR_CONT);
     GC9A01_write_data(data, len);
 }
 

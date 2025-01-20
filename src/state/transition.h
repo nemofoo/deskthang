@@ -5,21 +5,6 @@
 #include "state.h"
 #include "context.h"
 
-// Transition validation
-bool transition_is_valid(const StateContext *ctx, SystemState next, StateCondition condition);
-bool transition_can_recover(const StateContext *ctx);
-
-// Transition execution
-bool transition_entry(StateContext *ctx);
-bool transition_exit(StateContext *ctx);
-
-// Transition validation table entry
-typedef struct {
-    SystemState from_state;
-    SystemState to_state;
-    StateCondition condition;
-} TransitionRule;
-
 // State transition definition
 typedef struct {
     SystemState from_state;
@@ -28,9 +13,13 @@ typedef struct {
     bool (*validator)(void);
 } StateTransition;
 
-// Transition validation functions
-bool transition_execute(SystemState to_state, StateCondition condition);
-const StateTransition *transition_find(SystemState from, SystemState to, StateCondition condition);
+// Transition validation
+bool transition_is_valid(const StateContext *ctx, SystemState next, StateCondition condition);
+bool transition_can_recover(const StateContext *ctx);
+
+// Transition execution
+bool transition_entry(StateContext *ctx);
+bool transition_exit(StateContext *ctx);
 
 // State action execution
 bool transition_execute_entry_actions(SystemState state);

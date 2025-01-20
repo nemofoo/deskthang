@@ -6,12 +6,22 @@
 #include "pico/binary_info/code.h"  // For string operations
 #include "../error/logging.h"
 #include <string.h>     // For strncpy
+#include "../debug/debug.h"
 
 // Static configuration
 static struct {
     bool initialized;
     uint32_t timeout_ms;
-} serial_state = {0};
+    uint32_t overflow_count;
+    uint32_t last_overflow_time;
+    bool in_overflow;
+} serial_state = {
+    .initialized = false,
+    .timeout_ms = BASE_TIMEOUT_MS,
+    .overflow_count = 0,
+    .last_overflow_time = 0,
+    .in_overflow = false
+};
 
 bool serial_init(void) {
     if (serial_state.initialized) {
@@ -31,13 +41,124 @@ void serial_deinit(void) {
 }
 
 bool serial_write(const uint8_t *data, size_t len) {
-    if (!serial_state.initialized || data == NULL) {
+    if (!serial_state.initialized) {
         return false;
     }
 
-    size_t written = fwrite(data, 1, len, stdout);
-    fflush(stdout);  // Ensure data is sent
-    return written == len;
+    // Check for potential overflow
+    if (len > CHUNK_SIZE && !serial_state.in_overflow) {
+        serial_state.in_overflow = true;
+        serial_state.overflow_count++;
+        serial_state.last_overflow_time = deskthang_time_get_ms();
+        
+        debug_log_overflow();
+        
+        ErrorDetails error = {
+            .type = ERROR_TYPE_HARDWARE,
+            .severity = ERROR_SEVERITY_ERROR,
+            .code = ERROR_SERIAL_OVERFLOW,
+            .timestamp = deskthang_time_get_ms(),
+            .source_state = 0,
+            .recoverable = true,
+            .retry_count = 0,
+            .backoff_ms = 0
+        };
+        strncpy(error.message, "Buffer overflow detected", ERROR_MESSAGE_SIZE - 1);
+        error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
+        error.context[0] = '\0';
+        logging_error(&error);
+    }
+
+    debug_log_buffer_usage(len, CHUNK_SIZE);
+    debug_log_operation_start("serial_write");
+
+    size_t remaining = len;
+    const uint8_t *ptr = data;
+    
+    while (remaining > 0) {
+        size_t chunk = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+        if (!serial_write_chunk(ptr, chunk)) {
+            if (!serial_state.in_overflow) {
+                serial_state.in_overflow = true;
+                serial_state.overflow_count++;
+                serial_state.last_overflow_time = deskthang_time_get_ms();
+                
+                debug_log_overflow();
+                
+                ErrorDetails error = {
+                    .type = ERROR_TYPE_HARDWARE,
+                    .severity = ERROR_SEVERITY_ERROR,
+                    .code = ERROR_SERIAL_OVERFLOW,
+                    .timestamp = deskthang_time_get_ms(),
+                    .source_state = 0,
+                    .recoverable = true,
+                    .retry_count = 0,
+                    .backoff_ms = 0
+                };
+                strncpy(error.message, "Write failed - possible overflow", ERROR_MESSAGE_SIZE - 1);
+                error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
+                error.context[0] = '\0';
+                logging_error(&error);
+            }
+            debug_log_operation_end("serial_write");
+            return false;
+        }
+        ptr += chunk;
+        remaining -= chunk;
+    }
+
+    // Clear overflow state if write succeeds
+    if (serial_state.in_overflow) {
+        serial_state.in_overflow = false;
+        logging_write("Serial", "Recovered from overflow condition");
+    }
+
+    debug_log_operation_end("serial_write");
+    return true;
+}
+
+bool serial_write_chunk(const uint8_t *data, size_t len) {
+    if (!serial_state.initialized || len > CHUNK_SIZE) {
+        return false;
+    }
+
+    debug_log_operation_start("serial_write_chunk");
+
+    // Try to write with timeout
+    absolute_time_t timeout = make_timeout_time_ms(SERIAL_WRITE_TIMEOUT_MS);
+    while (len > 0) {
+        if (time_reached(timeout)) {
+            debug_log_operation_end("serial_write_chunk");
+            
+            ErrorDetails error = {
+                .type = ERROR_TYPE_HARDWARE,
+                .severity = ERROR_SEVERITY_ERROR,
+                .code = ERROR_SERIAL_TIMEOUT,
+                .timestamp = deskthang_time_get_ms(),
+                .source_state = 0,
+                .recoverable = true,
+                .retry_count = 0,
+                .backoff_ms = 0
+            };
+            strncpy(error.message, "Write timeout", ERROR_MESSAGE_SIZE - 1);
+            error.message[ERROR_MESSAGE_SIZE - 1] = '\0';
+            error.context[0] = '\0';
+            logging_error(&error);
+            return false;
+        }
+
+        int written = fwrite(data, 1, len, stdout);
+        if (written <= 0) {
+            debug_log_operation_end("serial_write_chunk");
+            return false;
+        }
+        
+        data += written;
+        len -= written;
+    }
+
+    debug_log_operation_end("serial_write_chunk");
+    return true;
 }
 
 bool serial_read(uint8_t *data, size_t len) {
@@ -63,18 +184,26 @@ bool serial_read(uint8_t *data, size_t len) {
 }
 
 bool serial_write_debug(const char *module, const char *message) {
-    if (!serial_state.initialized) {
+    if (!serial_state.initialized || !module || !message) {
         return false;
     }
 
-    DebugPacket packet;
-    packet.timestamp = deskthang_time_get_ms();
-    strncpy(packet.module, module, sizeof(packet.module)-1);
-    packet.module[sizeof(packet.module)-1] = '\0';
-    strncpy(packet.message, message, sizeof(packet.message)-1);
-    packet.message[sizeof(packet.message)-1] = '\0';
-    
-    return serial_write((uint8_t*)&packet, sizeof(packet));
+    char buffer[MESSAGE_BUFFER_SIZE];
+    int len = snprintf(buffer, sizeof(buffer),
+                MESSAGE_FORMAT_LOG,
+                MESSAGE_PREFIX_LOG,
+                deskthang_time_get_ms(),
+                module,
+                message,
+                "", "");  // No context for debug messages
+
+    if (len > 0 && len < sizeof(buffer)) {
+        bool success = serial_write((uint8_t*)buffer, len);
+        if (success) {
+            return serial_write((uint8_t*)"\n", 1);  // Add newline
+        }
+    }
+    return false;
 }
 
 bool serial_write_chunked(const uint8_t *data, size_t len) {
@@ -99,6 +228,11 @@ bool serial_write_chunked(const uint8_t *data, size_t len) {
 void serial_flush(void) {
     if (serial_state.initialized) {
         fflush(stdout);
+        // Reset overflow state after successful flush
+        if (serial_state.in_overflow) {
+            serial_state.in_overflow = false;
+            logging_write("Serial", "Overflow cleared after flush");
+        }
     }
 }
 
@@ -114,4 +248,21 @@ void serial_clear(void) {
     while (getchar_timeout_us(0) != PICO_ERROR_TIMEOUT) {
         // Keep reading until no more data
     }
+}
+
+bool serial_get_stats(SerialStats *stats) {
+    if (!stats) {
+        return false;
+    }
+    
+    stats->overflow_count = serial_state.overflow_count;
+    stats->last_overflow_time = serial_state.last_overflow_time;
+    stats->in_overflow = serial_state.in_overflow;
+
+    // Also update debug stats
+    ResourceDebugStats *debug_stats = debug_get_resource_stats();
+    debug_stats->total_overflows = serial_state.overflow_count;
+    debug_stats->last_overflow_time = serial_state.last_overflow_time;
+    
+    return true;
 }

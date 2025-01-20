@@ -4,14 +4,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "../error/error.h"
-#include "protocol_constants.h"  // Get constants first
+#include "../common/deskthang_constants.h"  // Updated include
 #include "packet.h"  // Then get packet definitions
 
-// Protocol configuration
+// Protocol configuration structure
 typedef struct {
-    uint8_t version;          // Must be PROTOCOL_VERSION
+    uint8_t version;          // Must match PROTOCOL_VERSION
     uint8_t sequence;         // Current sequence number
     
+    // Timing configuration
     struct {
         uint32_t base_timeout_ms;      // BASE_TIMEOUT_MS
         uint32_t min_retry_delay_ms;   // MIN_RETRY_DELAY_MS
@@ -19,12 +20,14 @@ typedef struct {
         uint8_t max_retries;           // MAX_RETRIES
     } timing;
     
+    // Buffer configuration
     struct {
         uint16_t max_packet_size;     // MAX_PACKET_SIZE
         uint16_t chunk_size;          // CHUNK_SIZE
         uint8_t header_size;          // HEADER_SIZE
     } limits;
     
+    // State tracking
     uint32_t last_checksum;          // Last valid checksum
     uint32_t packets_processed;       // Packet counter
     uint32_t errors_seen;            // Error counter
@@ -59,5 +62,9 @@ bool protocol_timing_valid(void);
 bool transfer_buffer_available(void);
 bool transfer_sequence_valid(void);
 bool transfer_checksum_valid(void);
+
+// Protocol state functions
+bool protocol_is_initialized(void);
+bool protocol_is_synchronized(void);
 
 #endif // PROTOCOL_H

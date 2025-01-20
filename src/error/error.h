@@ -3,22 +3,10 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../protocol/protocol_constants.h"
+#include "../common/deskthang_constants.h"
 
 // Error types as defined in protocol_architecture.md
-// Error code ranges as defined in protocol_architecture.md
-#define ERROR_CODE_HARDWARE_START 1000
-#define ERROR_CODE_HARDWARE_END   1999
-#define ERROR_CODE_PROTOCOL_START 2000
-#define ERROR_CODE_PROTOCOL_END   2999
-#define ERROR_CODE_STATE_START    3000
-#define ERROR_CODE_STATE_END      3999
-#define ERROR_CODE_COMMAND_START  4000
-#define ERROR_CODE_COMMAND_END    4999
-#define ERROR_CODE_TRANSFER_START 5000
-#define ERROR_CODE_TRANSFER_END   5999
-#define ERROR_CODE_SYSTEM_START   6000
-#define ERROR_CODE_SYSTEM_END     6999
+// Error code ranges are defined in deskthang_constants.h
 
 typedef enum {
     ERROR_TYPE_NONE = 0,
@@ -40,16 +28,16 @@ typedef enum {
 #include "../state/state.h"
 
 typedef struct {
-    ErrorType type;          // Error type
-    ErrorSeverity severity;  // Error severity
-    uint32_t code;          // Error code
-    uint32_t timestamp;     // When error occurred
-    SystemState source_state; // State when error occurred
-    char message[MAX_PACKET_SIZE/4];    // Error message (128 bytes)
-    char context[MAX_PACKET_SIZE/2];    // Additional context (256 bytes)
-    bool recoverable;       // Can be recovered from
-    uint8_t retry_count;    // Current retry count
-    uint32_t backoff_ms;    // Current backoff delay
+    ErrorType type;          
+    ErrorSeverity severity;  
+    uint32_t code;          
+    uint32_t timestamp;     
+    SystemState source_state;
+    char message[ERROR_MESSAGE_SIZE];    // Use new constant
+    char context[ERROR_CONTEXT_SIZE];    // Use new constant
+    bool recoverable;       
+    uint8_t retry_count;    
+    uint32_t backoff_ms;    
 } ErrorDetails;
 
 // Core error functions

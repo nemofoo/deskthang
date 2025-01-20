@@ -3,10 +3,12 @@
 #include "context.h"
 #include "transition.h"
 #include "../error/logging.h"
+#include "../error/recovery.h"
 #include "../system/time.h"
 #include "../protocol/protocol.h"
 #include "../protocol/command.h"
 #include "../protocol/transfer.h"
+#include "../debug/debug.h"
 
 // Forward declare hardware functions we need
 bool spi_is_configured(void);
@@ -46,7 +48,7 @@ static void error_exit(void);
 static void error_error(void *ctx);
 
 // State action handlers for each state
-static const StateActions STATE_ACTIONS[] = {
+const StateActions STATE_ACTIONS[] = {
     [STATE_HARDWARE_INIT] = {
         .on_entry = hardware_init_entry,
         .on_exit = hardware_init_exit,
@@ -220,23 +222,30 @@ bool state_machine_init(void) {
 }
 
 bool state_machine_transition(SystemState next_state, StateCondition condition) {
+    // Get current state
+    SystemState current = state_machine_get_current();
+
     // Validate transition
-    if (!state_machine_validate_transition(g_state_context.current_state, next_state, condition)) {
-        return state_machine_handle_error();
+    if (!state_machine_validate_transition(current, next_state, condition)) {
+        logging_write("State", "Invalid state transition");
+        return false;
     }
-    
+
+    // Execute exit actions for current state
+    transition_execute_exit_actions(current);
+
     // Update state
-    g_state_context.previous_state = g_state_context.current_state;
+    g_state_context.previous_state = current;
     g_state_context.current_state = next_state;
     g_state_context.last_condition = condition;
     g_state_context.last_update = deskthang_time_get_ms();
-    
-    // Log transition
-    log_info("State transition: %s -> %s (Condition: %s)",
-             state_to_string(g_state_context.previous_state),
-             state_to_string(g_state_context.current_state),
-             condition_to_string(condition));
-    
+
+    // Execute entry actions for new state
+    transition_execute_entry_actions(next_state);
+
+    // Log the transition
+    logging_write("State", "State transition complete");
+
     return true;
 }
 
@@ -245,6 +254,7 @@ bool state_machine_handle_error(void) {
         return false;  // Already in error state
     }
     
+    debug_log_transition(g_state_context.current_state, STATE_ERROR, CONDITION_ERROR, true);
     return state_machine_transition(STATE_ERROR, CONDITION_ERROR);
 }
 
@@ -255,6 +265,7 @@ bool state_machine_attempt_recovery(void) {
     
     if (state_context_can_retry()) {
         state_context_increment_retry();
+        debug_log_retry("state_recovery");
         return state_machine_transition(g_state_context.previous_state, CONDITION_RECOVERED);
     }
     

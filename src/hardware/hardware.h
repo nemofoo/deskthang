@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "../common/deskthang_constants.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,17 +22,17 @@ typedef struct {
 // Hardware configuration structure
 typedef struct {
     // Core configuration
-    uint8_t spi_port;        // SPI port number (0 or 1)
-    uint32_t spi_baud;       // SPI baud rate
+    uint8_t spi_port;        // DISPLAY_SPI_PORT
+    uint32_t spi_baud;       // DISPLAY_SPI_BAUD
     
     // Pin assignments
     PinConfig pins;
     
     // Timing parameters
     struct {
-        uint32_t reset_pulse_us;    // Reset pulse width
-        uint32_t init_delay_ms;     // Post-init delay
-        uint32_t cmd_delay_us;      // Command delay
+        uint32_t reset_pulse_us;    // DISPLAY_RESET_PULSE_US
+        uint32_t init_delay_ms;     // DISPLAY_INIT_DELAY_MS
+        uint32_t cmd_delay_us;      // DISPLAY_CMD_DELAY_US
     } timing;
     
     // Status flags

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "../common/deskthang_constants.h"
 
 // System states as defined in protocol_state_machine.md
 typedef enum {
@@ -64,5 +65,16 @@ const char *condition_to_string(StateCondition condition);
 
 bool state_machine_handle_error(void);
 SystemState state_machine_get_current_state(void);
+
+// Use STATE_* constants for validation flags
+typedef struct {
+    uint8_t flags;          // Use STATE_VALID_* flags
+    uint32_t entry_time;    
+    uint32_t duration;      
+    uint8_t retry_count;    
+} StateValidation;
+
+// Make STATE_ACTIONS available to other files
+extern const StateActions STATE_ACTIONS[];
 
 #endif // __DESKTHANG_STATE_H

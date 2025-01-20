@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "../common/deskthang_constants.h"
 #include "deskthang_gpio.h"  // Update if it's using gpio.h
 #include "../system/time.h"
 
@@ -10,32 +11,7 @@
 extern "C" {
 #endif
 
-// Command codes:
-#define COL_ADDR_SET        0x2A
-#define ROW_ADDR_SET        0x2B
-#define MEM_WR              0x2C
-#define COLOR_MODE          0x3A
-#define COLOR_MODE__12_BIT  0x03
-#define COLOR_MODE__16_BIT  0x05
-#define COLOR_MODE__18_BIT  0x06
-#define MEM_WR_CONT         0x3C
-#define GC9A01_COL_ADDR_SET        0x2A
-#define GC9A01_ROW_ADDR_SET        0x2B
-#define GC9A01_MEM_WR              0x2C
-#define GC9A01_MEM_WR_CONT         0x3C
-#define GC9A01_COLOR_MODE          0x3A
-#define GC9A01_COLOR_MODE__12_BIT  0x03
-#define GC9A01_COLOR_MODE__16_BIT  0x05
-#define GC9A01_COLOR_MODE__18_BIT  0x06
-
-// Orientation
-#define ORIENTATION_0   0x18
-#define ORIENTATION_90  0x28
-#define ORIENTATION_180 0x48
-#define ORIENTATION_270 0x88
-
 // Hardware abstraction layer
-// Should be defined by the user of the library
 void GC9A01_set_reset(uint8_t val);
 void GC9A01_set_data_command(uint8_t val);
 void GC9A01_set_chip_select(uint8_t val);

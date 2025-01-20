@@ -3,19 +3,21 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "protocol_constants.h"  // For MAX_PACKET_SIZE
+#include "../common/deskthang_constants.h"
 #include "../error/logging.h"
 
-// Packet type constants
-#define PACKET_TYPE_SYNC     0x1B  // Synchronization request
-#define PACKET_TYPE_SYNC_ACK 0x1C  // Synchronization acknowledgment
-#define PACKET_TYPE_CMD      0x1D  // Command packet
-#define PACKET_TYPE_DATA     0x1E  // Data packet
-#define PACKET_TYPE_ACK      0x1F  // Acknowledgment
-#define PACKET_TYPE_NACK     0x20  // Negative acknowledgment
-#define PACKET_TYPE_DEBUG    0x21  // Debug message packet
+// Add packet-specific constants to deskthang_constants.h first
+// Then update packet.h to use them
 
-typedef uint8_t PacketType;
+typedef enum {
+    PACKET_TYPE_SYNC = PACKET_SYNC_BYTE,
+    PACKET_TYPE_SYNC_ACK = PACKET_SYNC_ACK_BYTE,
+    PACKET_TYPE_CMD = PACKET_CMD_BYTE,
+    PACKET_TYPE_DATA = PACKET_DATA_BYTE,
+    PACKET_TYPE_ACK = PACKET_ACK_BYTE,
+    PACKET_TYPE_NACK = PACKET_NACK_BYTE,
+    PACKET_TYPE_DEBUG = PACKET_DEBUG_BYTE
+} PacketType;
 
 /**
  * Packet header structure.
@@ -26,7 +28,7 @@ typedef uint8_t PacketType;
  * - checksum (4 bytes): CRC32 of payload data
  */
 typedef struct {
-    uint8_t type;            // Packet type
+    PacketType type;            // Packet type
     uint8_t sequence;        // Sequence number
     uint16_t length;         // Payload length
     uint32_t checksum;       // CRC32 checksum
@@ -40,8 +42,15 @@ typedef struct {
  */
 typedef struct {
     PacketHeader header;                  // Fixed HEADER_SIZE (8) byte header
-    uint8_t payload[MAX_PACKET_SIZE];     // Variable length payload
+    uint8_t payload[MAX_PACKET_SIZE - HEADER_SIZE];     // Variable length payload
 } Packet;
+
+// Debug packet payload structure
+typedef struct {
+    uint32_t timestamp;
+    char module[DEBUG_MODULE_NAME_MAX];
+    char message[DEBUG_MESSAGE_MAX];
+} __attribute__((packed)) DebugPayload;
 
 // Packet buffer management
 bool packet_buffer_init(void);

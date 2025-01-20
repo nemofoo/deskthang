@@ -78,10 +78,25 @@ void protocol_deinit(void) {
 
 // Error handling
 void protocol_set_error(ErrorType type, const char *message) {
+    // Validate error type is appropriate for protocol module
+    if (type != ERROR_TYPE_PROTOCOL && type != ERROR_TYPE_NONE) {
+        // If invalid type provided, force it to protocol type
+        type = ERROR_TYPE_PROTOCOL;
+    }
+    
+    // Validate error code is in range for the type
+    uint32_t error_code = g_protocol_config.errors_seen + ERROR_CODE_PROTOCOL_START;
+    if (!error_code_in_range(type, error_code)) {
+        // If code would be out of range, wrap back to start of range
+        g_protocol_config.errors_seen = 0;
+        error_code = ERROR_CODE_PROTOCOL_START;
+    }
+    
     g_error_context.type = type;
     g_error_context.source_state = state_machine_get_current();
     g_error_context.timestamp = deskthang_time_get_ms();
-    g_error_context.code = g_protocol_config.errors_seen++;
+    g_error_context.code = error_code;
+    g_protocol_config.errors_seen++;
     
     if (message) {
         strncpy(g_error_context.message, message, sizeof(g_error_context.message) - 1);
@@ -90,16 +105,23 @@ void protocol_set_error(ErrorType type, const char *message) {
         g_error_context.message[0] = '\0';
     }
     
-    // Determine if error is recoverable
-    switch (type) {
-        case ERROR_INVALID_VERSION:
-        case ERROR_HARDWARE_FAILURE:
-            g_error_context.recoverable = false;
-            break;
-            
-        default:
-            g_error_context.recoverable = true;
-            break;
+    // Determine if error is recoverable based on error code
+    if (error_code >= ERROR_CODE_PROTOCOL_START && error_code <= ERROR_CODE_PROTOCOL_END) {
+        // Protocol errors are generally recoverable unless explicitly marked
+        g_error_context.recoverable = true;
+        
+        // Some specific protocol errors are not recoverable
+        switch (error_code) {
+            case ERROR_CODE_PROTOCOL_VERSION_MISMATCH:
+            case ERROR_CODE_PROTOCOL_FATAL:
+                g_error_context.recoverable = false;
+                break;
+            default:
+                break;
+        }
+    } else {
+        // Non-protocol errors in protocol module shouldn't happen
+        g_error_context.recoverable = false;
     }
     
     // Reset retry count for new error

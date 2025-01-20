@@ -3,12 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>  // Add this for printf/snprintf
 
-// Debug packet payload structure - Move this to the top
-typedef struct {
-    char module[32];
-    char message[256];
-} __attribute__((packed)) DebugPayload;
-
 // Static packet buffer
 static uint8_t g_packet_buffer[MAX_PACKET_SIZE];
 static uint16_t g_buffer_size = MAX_PACKET_SIZE;

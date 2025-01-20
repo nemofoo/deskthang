@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "error.h"
 #include "../common/definitions.h"
+#include "../common/deskthang_constants.h"
 
 // Recovery attempt result
 typedef struct {
@@ -16,9 +17,9 @@ typedef struct {
 
 // Recovery configuration
 typedef struct {
-    uint32_t max_retries;          // Maximum retry attempts
-    uint32_t base_delay_ms;        // Base delay between retries
-    uint32_t max_delay_ms;         // Maximum delay between retries
+    uint32_t max_retries;          // Use RECOVERY_MAX_ATTEMPTS
+    uint32_t base_delay_ms;        // Use RECOVERY_BASE_DELAY_MS
+    uint32_t max_delay_ms;         // Use RECOVERY_MAX_DELAY_MS
     bool allow_reboot;             // Whether reboot recovery is allowed
 } RecoveryConfig;
 

@@ -341,8 +341,8 @@ bool validate_transition(SystemState current, SystemState next, StateCondition c
         return false;
     }
     
-    // Check resources
-    if (!has_required_resources(next)) {
+    // State-specific validation
+    if (!validate_state_entry(next)) {
         return false;
     }
     
@@ -365,14 +365,13 @@ bool validate_transition(SystemState current, SystemState next, StateCondition c
 - Validate error logging
 - Test error recovery paths
 
-### 3. Resource Management
-- Test buffer allocation
-- Verify cleanup on exit
-- Test resource limits
-- Validate memory usage
+### 3. State-Specific Validation
+- Test entry conditions
+- Verify timing constraints
+- Test history validation
+- Validate state-specific requirements
 
 ### 4. Performance
 - Measure transition times
 - Track error rates
-- Monitor resource usage
 - Profile critical paths

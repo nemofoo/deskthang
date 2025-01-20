@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "../common/deskthang_constants.h"
 #include "hardware.h"
 #include "GC9A01.h"
 #include "deskthang_gpio.h"
@@ -13,11 +14,11 @@ extern "C" {
 #endif
 
 // Display dimensions
-#define DISPLAY_WIDTH  240
-#define DISPLAY_HEIGHT 240
+// #define DISPLAY_WIDTH  240
+// #define DISPLAY_HEIGHT 240
 
 // Color depth
-#define DISPLAY_COLOR_DEPTH 16  // 16-bit color (RGB565)
+// #define DISPLAY_COLOR_DEPTH 16  // 16-bit color (RGB565)
 
 // Display orientation options
 typedef enum {

@@ -4,12 +4,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "../common/deskthang_constants.h"
 #include "protocol.h"
 #include "packet.h"
 
 // Command types
 typedef enum {
-    CMD_IMAGE_START = 'I',    // Start image transfer (RGB565 format, 240×240)
+    CMD_IMAGE_START = 'I',    // Start image transfer (RGB565 format, DISPLAY_WIDTH×DISPLAY_HEIGHT)
     CMD_IMAGE_END = 'E',      // End image transfer
     CMD_PATTERN_CHECKER = '1', // Show checkerboard pattern
     CMD_PATTERN_STRIPE = '2',  // Show stripe pattern
@@ -22,7 +23,7 @@ typedef struct {
     CommandType type;          // Active command
     uint32_t start_time;       // Command start timestamp
     uint32_t bytes_processed;  // Progress tracking
-    uint32_t total_bytes;      // Expected total (for transfers)
+    uint32_t total_bytes;      // Should be TRANSFER_MAX_SIZE for image transfers
     bool in_progress;          // Command is active
     void *command_data;        // Command-specific data
 } CommandContext;
@@ -59,7 +60,7 @@ typedef struct {
     bool success;
     uint32_t duration_ms;
     uint32_t bytes_processed;
-    char message[256];  // For status/error messages
+    char message[DEBUG_MESSAGE_MAX];  // Use debug message size constant
 } CommandStatus;
 
 // Status tracking
