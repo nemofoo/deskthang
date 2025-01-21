@@ -14,6 +14,7 @@ void GC9A01_set_data_command(uint8_t val);
 void GC9A01_set_chip_select(uint8_t val);
 void GC9A01_delay(uint16_t ms);
 void GC9A01_spi_tx(uint8_t *data, size_t len);
+void GC9A01_set_orientation(uint8_t orientation);
 
 // Helper function to write a command
 void GC9A01_write_command(uint8_t cmd);

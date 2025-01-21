@@ -29,6 +29,7 @@ void serial_deinit(void);
 bool serial_write(const uint8_t *data, size_t len);
 bool serial_write_chunk(const uint8_t *data, size_t len);
 bool serial_read(uint8_t *data, size_t len);
+int serial_read_byte(void);  // Returns -1 if no data available, otherwise returns byte value
 bool serial_write_debug(const char *module, const char *message);
 bool serial_write_chunked(const uint8_t *data, size_t len);
 void serial_flush(void);

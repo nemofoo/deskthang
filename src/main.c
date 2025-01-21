@@ -133,29 +133,55 @@ static bool init_subsystems(void) {
 }
 
 int main() {
+    // Initialize stdio for initial printf only
+    stdio_init_all();
+    printf("DeskThang starting up...\n");
+    fflush(stdout);
+
     // Initialize GPIO for LED
     const uint LED_PIN = 25;
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
-    gpio_put(LED_PIN, 1);  // Turn on LED to show we're starting
+    gpio_put(LED_PIN, 1);
+
+    // Initialize error handling first (doesn't depend on anything)
+    error_init();
+    gpio_put(LED_PIN, 0); sleep_ms(200); gpio_put(LED_PIN, 1);  // 1 blink for error init
+    sleep_ms(1000);  // Long pause after section
     
-    // Initialize stdio first, before any printing
-    stdio_init_all();
+    // Initialize serial directly
+    if (!serial_init()) {
+        return false;
+    }
+    gpio_put(LED_PIN, 0); sleep_ms(200); gpio_put(LED_PIN, 1);  // 1 more blink for serial
+    sleep_ms(1000);
     
-    // Wait for USB CDC to be ready, blink LED while waiting
-    for(int i = 0; i < 6; i++) {  // 3 seconds total
-        gpio_put(LED_PIN, i % 2);  // Toggle LED every 500ms
-        sleep_ms(500);
+    // Initialize logging (depends on serial)
+    if (!logging_init()) {
+        return false;
+    }
+    gpio_put(LED_PIN, 0); sleep_ms(200); 
+    gpio_put(LED_PIN, 1); sleep_ms(200); 
+    gpio_put(LED_PIN, 0); sleep_ms(200);
+    gpio_put(LED_PIN, 1);  // 2 blinks for logging init
+    sleep_ms(1000);  // Long pause after section
+
+    // Initialize packet system
+    if (!packet_buffer_init()) {
+        return false;
     }
 
-    sleep_ms(2000);
+    // Switch to debug packets for all future logging
+    logging_enable_debug_packets();
     
-    // Now start printing
-    printf("\n\n\n=== Deskthang Debug Output ===\n");
-    fflush(stdout);
-    printf("USB CDC should be ready now\n");
-    fflush(stdout);
+    // From here on we use debug packets for all output
+    logging_write("Init", "System initialized, switching to debug packets");
     
+    // Rest of initialization...
+    if (!init_subsystems()) {
+        return false;
+    }
+
     // Initialize core subsystems
     printf("Initializing state machine...\n");
     fflush(stdout);
@@ -192,19 +218,30 @@ int main() {
         
         // Process state-specific actions
         switch (current_state) {
+            case STATE_HARDWARE_INIT:
+                // Hardware init is handled by entry action
+                break;
+                
+            case STATE_DISPLAY_INIT:
+                // If display is initialized, transition to IDLE
+                if (display_is_initialized()) {
+                    state_machine_transition(STATE_IDLE, CONDITION_DISPLAY_READY);
+                }
+                break;
+                
             case STATE_IDLE:
             case STATE_READY:
                 // Process packets in these states
                 if (packet_receive(&packet)) {
                     gpio_put(LED_PIN, 1);  // Flash LED briefly when packet received
-                    printf("Received packet type: %d\n", packet.header.type);
-                    fflush(stdout);
                     if (!protocol_process_packet(&packet)) {
                         // Handle protocol error through state machine
                         state_machine_transition(STATE_ERROR, CONDITION_ERROR);
                     }
                     sleep_ms(50);  // Keep LED on briefly
                     gpio_put(LED_PIN, led_state);  // Return to heartbeat state
+                } else {
+                    sleep_ms(10);  // Add small delay when no packet received to prevent tight-looping
                 }
                 break;
                 
@@ -221,8 +258,14 @@ int main() {
         if (heartbeat % 1000 == 0) {
             led_state = !led_state;  // Toggle LED with heartbeat
             gpio_put(LED_PIN, led_state);
-            printf("Heartbeat: %lu, State: %s\n", heartbeat / 1000, state_to_string(current_state));
-            fflush(stdout);
+            
+            // Send heartbeat through debug packet instead of printf
+            char message[64];
+            snprintf(message, sizeof(message), "Heartbeat: %lu, State: %s", heartbeat / 1000, state_to_string(current_state));
+            Packet debug_packet;
+            if (packet_create_debug(&debug_packet, "SYSTEM", message)) {
+                packet_transmit(&debug_packet);
+            }
         }
         heartbeat++;
         sleep_ms(1);

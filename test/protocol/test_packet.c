@@ -12,23 +12,23 @@ void tearDown(void) {
 }
 
 void test_packet_validate_type(void) {
-    Packet packet = {0};  // Initialize to zero
+    Packet packet;
     
     // Test valid packet types
-    packet.header.type = PACKET_TYPE_SYNC;
+    packet.header.packet_type = PACKET_TYPE_SYNC;
     TEST_ASSERT_TRUE(packet_validate(&packet));
     
-    packet.header.type = PACKET_TYPE_SYNC_ACK;
+    packet.header.packet_type = PACKET_TYPE_SYNC_ACK;
     TEST_ASSERT_TRUE(packet_validate(&packet));
     
-    packet.header.type = PACKET_TYPE_CMD;
+    packet.header.packet_type = PACKET_TYPE_COMMAND;
     TEST_ASSERT_TRUE(packet_validate(&packet));
     
-    packet.header.type = PACKET_TYPE_DATA;
+    packet.header.packet_type = PACKET_TYPE_DATA;
     TEST_ASSERT_TRUE(packet_validate(&packet));
     
     // Test invalid packet type
-    packet.header.type = 0xFF;  // Invalid type
+    packet.header.packet_type = 0xFF;  // Invalid type
     TEST_ASSERT_FALSE(packet_validate(&packet));
     
     // Test null packet

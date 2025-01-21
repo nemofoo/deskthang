@@ -99,6 +99,7 @@ bool display_init(const HardwareConfig *hw_config_in, const DisplayConfig *disp_
     deskthang_delay_ms(2000);  // 2 second delay
 
     buffer_used = 0;
+    display_state.initialized = true;
     return true;
 }
 
@@ -191,7 +192,7 @@ const DisplayConfig* display_get_config(void) {
 }
 
 bool display_is_initialized(void) {
-    return true;
+    return display_state.initialized;
 }
 
 bool display_reset_complete(void) {

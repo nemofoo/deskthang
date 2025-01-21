@@ -96,7 +96,7 @@ void test_transfer_buffer_available_after_free(void) {
 // Test chunk validation
 void test_transfer_validate_chunk_valid(void) {
     Packet packet;
-    packet.header.type = PACKET_TYPE_DATA;
+    packet.header.packet_type = PACKET_TYPE_DATA;
     packet.header.sequence = 1;
     packet.header.length = sizeof(test_data);
     memcpy(packet.payload, test_data, sizeof(test_data));
@@ -108,7 +108,7 @@ void test_transfer_validate_chunk_valid(void) {
 
 void test_transfer_validate_chunk_invalid_type(void) {
     Packet packet;
-    packet.header.type = PACKET_TYPE_SYNC;  // Wrong type
+    packet.header.packet_type = PACKET_TYPE_SYNC;  // Wrong type
     packet.header.sequence = 1;
     packet.header.length = sizeof(test_data);
     memcpy(packet.payload, test_data, sizeof(test_data));
@@ -120,7 +120,7 @@ void test_transfer_validate_chunk_invalid_type(void) {
 
 void test_transfer_validate_chunk_invalid_sequence(void) {
     Packet packet;
-    packet.header.type = PACKET_TYPE_DATA;
+    packet.header.packet_type = PACKET_TYPE_DATA;
     packet.header.sequence = 2;  // Wrong sequence
     packet.header.length = sizeof(test_data);
     memcpy(packet.payload, test_data, sizeof(test_data));
@@ -132,7 +132,7 @@ void test_transfer_validate_chunk_invalid_sequence(void) {
 
 void test_transfer_validate_chunk_invalid_checksum(void) {
     Packet packet;
-    packet.header.type = PACKET_TYPE_DATA;
+    packet.header.packet_type = PACKET_TYPE_DATA;
     packet.header.sequence = 1;
     packet.header.length = sizeof(test_data);
     memcpy(packet.payload, test_data, sizeof(test_data));

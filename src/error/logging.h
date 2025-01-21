@@ -4,8 +4,11 @@
 #include <stdbool.h>
 #include "error.h"
 
-// Initialize logging subsystem
+// Initialize logging system
 bool logging_init(void);
+
+// Enable debug packet mode for logging
+void logging_enable_debug_packets(void);
 
 // Basic logging functions
 void logging_write(const char *module, const char *message);

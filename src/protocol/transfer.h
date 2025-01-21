@@ -66,6 +66,7 @@ bool transfer_allocate_buffer(uint32_t size);
 void transfer_free_buffer(void);
 uint8_t *transfer_get_buffer(void);
 uint32_t transfer_get_buffer_size(void);
+bool transfer_buffer_available(void);
 
 // Progress tracking
 float transfer_get_progress(void);
@@ -77,6 +78,8 @@ uint32_t transfer_get_estimated_time_remaining(void);
 bool transfer_validate_chunk(const Packet *packet);
 bool transfer_validate_sequence(uint8_t sequence);
 bool transfer_validate_checksum(const uint8_t *data, uint16_t length, uint32_t checksum);
+bool transfer_sequence_valid(void);
+bool transfer_checksum_valid(void);
 
 // Error handling
 bool transfer_handle_error(ErrorType error);

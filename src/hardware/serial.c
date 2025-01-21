@@ -288,3 +288,14 @@ bool serial_get_stats(SerialStats *stats) {
     
     return true;
 }
+
+int serial_read_byte(void) {
+    uint8_t byte;
+    if (!serial_available()) {
+        return -1;
+    }
+    if (!serial_read(&byte, 1)) {
+        return -1;
+    }
+    return byte;
+}

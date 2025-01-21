@@ -10,7 +10,6 @@ DeskThang is a USB-connected display device featuring a GC9A01 240×240 round LC
   - RGB565 color format (16-bit color)
   - SPI interface (Mode 0)
   - Round display shape
-  - Hardware-accelerated rectangle fills
 
 ## Command Interface
 

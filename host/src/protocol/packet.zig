@@ -1,110 +1,93 @@
 const std = @import("std");
 
-pub const PacketType = enum(u8) {
-    SYNC = 0x1B,
-    SYNC_ACK = 0x1C,
-    CMD = 0x1D,
-    DATA = 0x1E,
-    ACK = 0x1F,
-    NACK = 0x20,
+pub const MessageType = enum(u8) {
+    Debug = 'D',
+    Command = 'C',
+    Image = 'I',
+    Ack = 'A',
+    Nack = 'N',
 };
 
-pub const PacketHeader = packed struct {
-    marker: u8 = 0xAA, // Start marker
-    packet_type: PacketType,
+pub const Message = struct {
+    msg_type: MessageType,
     sequence: u8,
-    length: u16,
-    crc32: u32,
-};
-
-pub const Packet = struct {
-    header: PacketHeader,
-    payload: ?[]const u8,
+    payload: []const u8,
 
     const Self = @This();
 
-    pub fn init(packet_type: PacketType, sequence: u8, payload: ?[]const u8) !Self {
-        const payload_len: u16 = if (payload) |p| @intCast(p.len) else 0;
+    pub fn format(self: Self, allocator: std.mem.Allocator) ![]u8 {
+        // Calculate total message size: ~TYPE(1)SEQ(2):PAYLOAD#CRC\n
+        const total_size = 1 + 1 + 2 + 1 + self.payload.len + 1 + 4 + 1;
 
-        var packet = Self{
-            .header = PacketHeader{
-                .packet_type = packet_type,
-                .sequence = sequence,
-                .length = payload_len,
-                .crc32 = 0, // Will be calculated later
-            },
+        // Allocate buffer for complete message
+        var buffer = try allocator.alloc(u8, total_size);
+        errdefer allocator.free(buffer);
+
+        // Format the message prefix
+        var prefix = buffer[0..5];
+        prefix[0] = '~';
+        prefix[1] = @intFromEnum(self.msg_type);
+        _ = try std.fmt.bufPrint(prefix[2..4], "{:0>2}", .{self.sequence});
+        prefix[4] = ':';
+
+        // Copy payload
+        @memcpy(buffer[5..][0..self.payload.len], self.payload);
+
+        // Add checksum marker
+        buffer[5 + self.payload.len] = '#';
+
+        // Calculate CRC32 of everything before the #
+        var hasher = std.hash.Crc32.init();
+        hasher.update(buffer[0 .. 5 + self.payload.len]);
+        const checksum = hasher.final();
+
+        // Add checksum and newline
+        _ = try std.fmt.bufPrint(buffer[6 + self.payload.len ..], "{X:0>4}\n", .{checksum});
+
+        return buffer;
+    }
+
+    pub fn parse(line: []const u8) !Self {
+        if (line.len < 9 or line[0] != '~' or line[line.len - 1] != '\n') {
+            return error.InvalidFormat;
+        }
+
+        // Parse message type
+        const msg_type = std.meta.stringToEnum(MessageType, line[1..2]) orelse
+            return error.InvalidType;
+
+        // Parse sequence number
+        const sequence = try std.fmt.parseInt(u8, line[2..4], 10);
+
+        if (line[4] != ':') return error.InvalidFormat;
+
+        // Find checksum marker
+        const hash_pos = std.mem.indexOf(u8, line, "#") orelse
+            return error.InvalidFormat;
+
+        // Extract payload
+        const payload = line[5..hash_pos];
+
+        // Verify checksum
+        var hasher = std.hash.Crc32.init();
+        hasher.update(line[0..hash_pos]);
+        const checksum = hasher.final();
+
+        const expected = try std.fmt.parseInt(u32, line[hash_pos + 1 .. line.len - 1], 16);
+
+        if (checksum != expected) return error.InvalidChecksum;
+
+        return Self{
+            .msg_type = msg_type,
+            .sequence = sequence,
             .payload = payload,
         };
-
-        // Calculate CRC32 over header (excluding crc field) and payload
-        packet.header.crc32 = try packet.calculateCRC32();
-        return packet;
-    }
-
-    pub fn calculateCRC32(self: Self) !u32 {
-        var hasher = std.hash.Crc32.init();
-
-        // Hash header fields (excluding CRC32)
-        const header_size = @sizeOf(PacketHeader) - @sizeOf(u32);
-        const header_bytes = std.mem.asBytes(&self.header)[0..header_size];
-        hasher.update(header_bytes);
-
-        // Hash payload if present
-        if (self.payload) |payload| {
-            hasher.update(payload);
-        }
-
-        return hasher.final();
-    }
-
-    pub fn validate(self: Self) !void {
-        // Check marker
-        if (self.header.marker != 0xAA) {
-            return error.InvalidMarker;
-        }
-
-        // Validate CRC32
-        const calculated_crc = try self.calculateCRC32();
-        if (calculated_crc != self.header.crc32) {
-            return error.InvalidCRC;
-        }
-
-        // Validate payload length
-        if (self.payload) |payload| {
-            if (payload.len != self.header.length) {
-                return error.InvalidLength;
-            }
-        } else if (self.header.length != 0) {
-            return error.InvalidLength;
-        }
-    }
-
-    pub fn format(
-        self: Self,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-
-        try writer.print("{s} seq={} len={} crc=0x{X:0>8}", .{
-            @tagName(self.header.packet_type),
-            self.header.sequence,
-            self.header.length,
-            self.header.crc32,
-        });
-
-        if (self.payload) |payload| {
-            try writer.print(" payload=\"{s}\"", .{payload});
-        }
     }
 };
 
-pub const PacketError = error{
-    InvalidMarker,
-    InvalidCRC,
-    InvalidLength,
-    InvalidPacketType,
-    BufferTooSmall,
+pub const MessageError = error{
+    InvalidFormat,
+    InvalidType,
+    InvalidChecksum,
+    InvalidSequence,
 };

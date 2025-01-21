@@ -13,15 +13,13 @@ bool packet_validate(const Packet *packet) {
         return false;
     }
 
-    // Validate packet type
-    switch (packet->header.type) {
+    // Mock packet validation based on type
+    switch (packet->header.packet_type) {
         case PACKET_TYPE_SYNC:
         case PACKET_TYPE_SYNC_ACK:
-        case PACKET_TYPE_CMD:
+        case PACKET_TYPE_COMMAND:
         case PACKET_TYPE_DATA:
-        case PACKET_TYPE_ACK:
-        case PACKET_TYPE_NACK:
-        case PACKET_TYPE_DEBUG:
+        case PACKET_TYPE_CONTROL:
             return true;
         default:
             return false;
