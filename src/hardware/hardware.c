@@ -2,6 +2,7 @@
 #include "deskthang_gpio.h"
 #include "deskthang_spi.h"
 #include "display.h"
+#include "../error/logging.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -11,23 +12,26 @@ static bool is_initialized = false;
 
 bool hardware_init(const HardwareConfig *config) {
     if (config == NULL) {
-        printf("Hardware Error: NULL config\n");
+        logging_write("Hardware", "NULL config provided");
         return false;
     }
 
     // Store configuration in a non-const local copy
     memcpy(&hw_config, config, sizeof(HardwareConfig));
     
-    printf("Hardware: Initializing GPIO...\n");
+    logging_write("Hardware", "Initializing GPIO...");
     // Initialize GPIO first
     if (!deskthang_gpio_init(&hw_config)) {
-        printf("Hardware Error: GPIO initialization failed\n");
+        logging_write("Hardware", "GPIO initialization failed");
         return false;
     }
-    printf("Hardware: GPIO initialized successfully\n");
+    logging_write("Hardware", "GPIO initialized successfully");
     
-    printf("Hardware: Initializing SPI (port %d, baud %lu)...\n", 
+    char spi_msg[100];
+    snprintf(spi_msg, sizeof(spi_msg), "Initializing SPI (port %d, baud %lu)...", 
            config->spi_port, (unsigned long)config->spi_baud);
+    logging_write("Hardware", spi_msg);
+    
     // Initialize SPI after GPIO
     DeskthangSPIConfig spi_config = {
         .spi_port = config->spi_port,
@@ -39,11 +43,11 @@ bool hardware_init(const HardwareConfig *config) {
     };
     
     if (!deskthang_spi_init(&spi_config)) {
-        printf("Hardware Error: SPI initialization failed\n");
+        logging_write("Hardware", "SPI initialization failed");
         deskthang_gpio_deinit();
         return false;
     }
-    printf("Hardware: SPI initialized successfully\n");
+    logging_write("Hardware", "SPI initialized successfully");
     
     // Mark as initialized
     is_initialized = true;

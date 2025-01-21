@@ -2,6 +2,7 @@
 #include "deskthang_spi.h"  // Changed from spi.h
 #include "hardware/gpio.h"
 #include "../common/deskthang_constants.h"
+#include "../error/logging.h"
 #include <stdio.h>
 
 static uint8_t current_orientation = 0;
@@ -73,36 +74,39 @@ static inline void GC9A01_write_byte(uint8_t val) {
 }
 
 void GC9A01_init(void) {
-    printf("Display: Starting initialization sequence\n");
+    logging_write("Display", "Starting initialization sequence");
     
     // Check if SPI is initialized
     if (!deskthang_spi_is_initialized()) {
-        printf("Display Error: SPI not initialized before display init\n");
+        logging_write("Display", "SPI not initialized before display init");
         return;
     }
     
     // Check GPIO pins
-    printf("Display: Checking GPIO pins...\n");
+    logging_write("Display", "Checking GPIO pins...");
     if (!gpio_is_dir_out(DISPLAY_PIN_CS) || !gpio_is_dir_out(DISPLAY_PIN_DC) || !gpio_is_dir_out(DISPLAY_PIN_RST)) {
-        printf("Display Error: GPIO pins not properly configured\n");
-        printf("CS pin (GPIO %d) output: %d\n", DISPLAY_PIN_CS, gpio_is_dir_out(DISPLAY_PIN_CS));
-        printf("DC pin (GPIO %d) output: %d\n", DISPLAY_PIN_DC, gpio_is_dir_out(DISPLAY_PIN_DC));
-        printf("RST pin (GPIO %d) output: %d\n", DISPLAY_PIN_RST, gpio_is_dir_out(DISPLAY_PIN_RST));
+        char error_msg[100];
+        snprintf(error_msg, sizeof(error_msg), 
+                "GPIO pins not properly configured - CS:%d DC:%d RST:%d", 
+                gpio_is_dir_out(DISPLAY_PIN_CS),
+                gpio_is_dir_out(DISPLAY_PIN_DC),
+                gpio_is_dir_out(DISPLAY_PIN_RST));
+        logging_write("Display", error_msg);
         return;
     }
-    printf("Display: GPIO pins configured correctly\n");
+    logging_write("Display", "GPIO pins configured correctly");
     
     GC9A01_set_chip_select(1);
     GC9A01_delay(5);
-    printf("Display: Starting reset sequence\n");
+    logging_write("Display", "Starting reset sequence");
     GC9A01_set_reset(0);
     GC9A01_delay(10);
     GC9A01_set_reset(1);
     GC9A01_delay(120);
-    printf("Display: Reset sequence complete\n");
+    logging_write("Display", "Reset sequence complete");
     
     /* Initial Sequence */ 
-    printf("Display: Starting power control sequence\n");
+    logging_write("Display", "Starting power control sequence");
     GC9A01_write_command(0xEF);
     GC9A01_write_command(0xEB);
     GC9A01_write_byte(0x14);
@@ -148,14 +152,14 @@ void GC9A01_init(void) {
     
     GC9A01_write_command(0x8F);
     GC9A01_write_byte(0xFF);
-    printf("Display: Power control sequence complete\n");
+    logging_write("Display", "Power control sequence complete");
     
-    printf("Display: Configuring display parameters\n");
+    logging_write("Display", "Configuring display parameters");
     GC9A01_write_command(0xB6);
     GC9A01_write_byte(0x00);
     GC9A01_write_byte(0x00);
     
-    printf("Display: Setting orientation (MADCTL)\n");
+    logging_write("Display", "Setting orientation (MADCTL)");
     GC9A01_write_command(0x36);
 #if ORIENTATION == 0
     GC9A01_write_byte(0x18);
@@ -167,11 +171,11 @@ void GC9A01_init(void) {
     GC9A01_write_byte(0x88);
 #endif
     
-    printf("Display: Setting color mode to 16-bit\n");
+    logging_write("Display", "Setting color mode to 16-bit");
     GC9A01_write_command(0x3A);
     GC9A01_write_byte(0x05);
     
-    printf("Display: Configuring gamma settings\n");
+    logging_write("Display", "Configuring gamma settings");
     GC9A01_write_command(0x90);
     GC9A01_write_byte(0x08);
     GC9A01_write_byte(0x08);
@@ -189,7 +193,7 @@ void GC9A01_init(void) {
     GC9A01_write_byte(0x01);
     GC9A01_write_byte(0x04);
     
-    printf("Display: Setting power control registers\n");
+    logging_write("Display", "Setting power control registers");
     GC9A01_write_command(0xC3);
     GC9A01_write_byte(0x13);
     GC9A01_write_command(0xC4);
@@ -343,15 +347,15 @@ void GC9A01_init(void) {
     GC9A01_write_command(0x35);
     GC9A01_write_command(0x21);
     
-    printf("Display: Exiting sleep mode\n");
+    logging_write("Display", "Exiting sleep mode");
     GC9A01_write_command(0x11);    // Sleep Out
     GC9A01_delay(120);
     
-    printf("Display: Turning display on\n");
+    logging_write("Display", "Turning display on");
     GC9A01_write_command(0x29);    // Display ON
     GC9A01_delay(20);
     
-    printf("Display: Initialization complete\n");
+    logging_write("Display", "Initialization complete");
 }
 
 void GC9A01_set_frame(struct GC9A01_frame frame) {

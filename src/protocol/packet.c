@@ -339,7 +339,7 @@ bool packet_receive(Packet *packet) {
     // Read header with timeout
     uint8_t *header_bytes = (uint8_t*)&packet->header;
     for (size_t i = 0; i < sizeof(PacketHeader); i++) {
-        if (!read_byte_unescaped(&header_bytes[i], 1000)) {
+        if (!read_byte_unescaped(&header_bytes[i], 10)) {
             return false;
         }
     }
@@ -357,7 +357,7 @@ bool packet_receive(Packet *packet) {
         }
         
         for (size_t i = 0; i < packet->header.length; i++) {
-            if (!read_byte_unescaped(&packet->payload[i], 1000)) {
+            if (!read_byte_unescaped(&packet->payload[i], 10)) {
                 free(packet->payload);
                 return false;
             }
@@ -368,7 +368,7 @@ bool packet_receive(Packet *packet) {
     
     // Read space before checksum
     uint8_t space;
-    if (!read_byte_unescaped(&space, 1000) || space != ' ') {
+    if (!read_byte_unescaped(&space, 10) || space != ' ') {
         if (packet->payload) {
             free(packet->payload);
         }
@@ -378,7 +378,7 @@ bool packet_receive(Packet *packet) {
     // Read checksum as hex
     char checksum_hex[9];
     for (size_t i = 0; i < 8; i++) {
-        if (!read_byte_unescaped((uint8_t*)&checksum_hex[i], 1000)) {
+        if (!read_byte_unescaped((uint8_t*)&checksum_hex[i], 10)) {
             if (packet->payload) {
                 free(packet->payload);
             }
@@ -396,7 +396,7 @@ bool packet_receive(Packet *packet) {
     }
     
     // Read end marker
-    if (!read_byte_unescaped(&packet->end_marker, 1000)) {
+    if (!read_byte_unescaped(&packet->end_marker, 10)) {
         if (packet->payload) {
             free(packet->payload);
         }

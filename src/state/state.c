@@ -111,17 +111,17 @@ const StateActions STATE_ACTIONS[] = {
 
 // State action handler implementations
 static void hardware_init_entry(void) {
-    printf("State: Entering HARDWARE_INIT\n");
+    logging_write("State", "Entering HARDWARE_INIT");
     
     // Initialize hardware
     if (!hardware_init(&hw_config)) {
-        printf("State: Hardware initialization failed\n");
+        logging_write("State", "Hardware initialization failed");
         state_machine_transition(STATE_ERROR, CONDITION_ERROR);
         return;
     }
     
     // Hardware init successful, move to display init
-    printf("State: Hardware initialization successful\n");
+    logging_write("State", "Hardware initialization successful");
     state_machine_transition(STATE_DISPLAY_INIT, CONDITION_HARDWARE_READY);
 }
 
@@ -131,26 +131,26 @@ static void hardware_init_exit(void) {
 
 static void hardware_init_error(void *ctx) {
     // Handle hardware initialization errors
-    printf("State: Hardware initialization error\n");
+    logging_write("State", "Hardware initialization error");
     // Try to recover by reinitializing
     if (!hardware_reset()) {
-        printf("State: Hardware reset failed\n");
+        logging_write("State", "Hardware reset failed");
         state_machine_transition(STATE_ERROR, CONDITION_ERROR);
     }
 }
 
 static void display_init_entry(void) {
-    printf("State: Entering DISPLAY_INIT\n");
+    logging_write("State", "Entering DISPLAY_INIT");
     
     // Initialize display
     if (!display_init(&hw_config, &display_config)) {
-        printf("State: Display initialization failed\n");
+        logging_write("State", "Display initialization failed");
         state_machine_transition(STATE_ERROR, CONDITION_ERROR);
         return;
     }
     
     // Display init successful, move to idle
-    printf("State: Display initialization successful\n");
+    logging_write("State", "Display initialization successful");
     state_machine_transition(STATE_IDLE, CONDITION_DISPLAY_READY);
 }
 
@@ -271,23 +271,28 @@ bool state_machine_transition(SystemState next_state, StateCondition condition) 
     // Get current state
     SystemState current = state_machine_get_current();
 
-    printf("State: Attempting transition from %s to %s (condition: %s)\n",
+    char transition_msg[256];
+    snprintf(transition_msg, sizeof(transition_msg), "Attempting transition from %s to %s (condition: %s)",
            state_to_string(current),
            state_to_string(next_state),
            condition_to_string(condition));
+    logging_write("State", transition_msg);
 
     // Validate transition
     if (!state_machine_validate_transition(current, next_state, condition)) {
-        printf("State Error: Invalid transition from %s to %s\n",
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Invalid state transition from %s to %s",
                state_to_string(current),
                state_to_string(next_state));
-        logging_write("State", "Invalid state transition");
+        logging_write("State", error_msg);
         return false;
     }
 
     // Execute exit actions for current state
     if (STATE_ACTIONS[current].on_exit) {
-        printf("State: Executing exit actions for %s\n", state_to_string(current));
+        char exit_msg[256];
+        snprintf(exit_msg, sizeof(exit_msg), "Executing exit actions for %s", state_to_string(current));
+        logging_write("State", exit_msg);
         STATE_ACTIONS[current].on_exit();
     }
 
@@ -299,13 +304,15 @@ bool state_machine_transition(SystemState next_state, StateCondition condition) 
 
     // Execute entry actions for new state
     if (STATE_ACTIONS[next_state].on_entry) {
-        printf("State: Executing entry actions for %s\n", state_to_string(next_state));
+        char entry_msg[256];
+        snprintf(entry_msg, sizeof(entry_msg), "Executing entry actions for %s", state_to_string(next_state));
+        logging_write("State", entry_msg);
         STATE_ACTIONS[next_state].on_entry();
     }
 
-    printf("State: Successfully transitioned to %s\n", state_to_string(next_state));
-    logging_write("State", "State transition complete");
-
+    char success_msg[256];
+    snprintf(success_msg, sizeof(success_msg), "Successfully transitioned to %s", state_to_string(next_state));
+    logging_write("State", success_msg);
     return true;
 }
 
@@ -542,7 +549,7 @@ bool state_machine_validate_state(SystemState state) {
 bool state_machine_validate_transition(SystemState current, SystemState next, StateCondition condition) {
     // First validate the states themselves
     if (!state_machine_validate_state(current) || !state_machine_validate_state(next)) {
-        printf("State Error: Invalid state value(s) in transition\n");
+        logging_write("State", "Invalid state value(s) in transition");
         return false;
     }
 
@@ -569,7 +576,7 @@ bool state_machine_validate_transition(SystemState current, SystemState next, St
                    (next == STATE_IDLE && condition == CONDITION_RESET);
 
         default:
-            printf("State Error: Unhandled current state in transition validation\n");
+            logging_write("State", "Unhandled current state in transition validation");
             return false;
     }
 }

@@ -183,14 +183,12 @@ int main() {
     }
 
     // Initialize core subsystems
-    printf("Initializing state machine...\n");
-    fflush(stdout);
+    logging_write("Init", "Initializing state machine");
     gpio_put(LED_PIN, 1);  // LED on during initialization
 
     if (!state_machine_init()) {
         // Handle initialization failure
-        printf("State machine initialization failed!\n");
-        fflush(stdout);
+        logging_write("Init", "State machine initialization failed");
         while(1) {
             gpio_put(LED_PIN, 1);  // Fast blink to indicate failure
             sleep_ms(100);
@@ -201,30 +199,39 @@ int main() {
     }
 
     logging_write("Main", "State machine initialized successfully");
-    printf("State machine initialization successful!\n");
-    fflush(stdout);
-
-    // Let the state machine handle initialization
-    printf("Starting state machine initialization sequence...\n");
-    fflush(stdout);
 
     // Main event loop
-    uint32_t heartbeat = 0;
+    uint32_t last_heartbeat = time_us_32() / 1000;  // Current time in ms
     bool led_state = false;
     Packet packet;  // Moved outside switch
+    SystemState last_state = STATE_HARDWARE_INIT;  // Start with initial state
+
+    logging_write("Main", "Entering main event loop");
 
     while (1) {
+        uint32_t current_time = time_us_32() / 1000;  // Current time in ms
         SystemState current_state = state_machine_get_current();
+        char state_log[64];
+        
+        // Log state changes
+        if (current_state != last_state) {
+            char state_msg[64];
+            snprintf(state_msg, sizeof(state_msg), "State changed from %s to %s", 
+                    state_to_string(last_state), state_to_string(current_state));
+            logging_write("Main", state_msg);
+            last_state = current_state;
+        }
         
         // Process state-specific actions
         switch (current_state) {
             case STATE_HARDWARE_INIT:
-                // Hardware init is handled by entry action
+                logging_write("Main", "Processing HARDWARE_INIT state");
                 break;
                 
             case STATE_DISPLAY_INIT:
-                // If display is initialized, transition to IDLE
+                logging_write("Main", "In DISPLAY_INIT state, checking initialization");
                 if (display_is_initialized()) {
+                    logging_write("Main", "Display initialized, transitioning to IDLE");
                     state_machine_transition(STATE_IDLE, CONDITION_DISPLAY_READY);
                 }
                 break;
@@ -233,41 +240,45 @@ int main() {
             case STATE_READY:
                 // Process packets in these states
                 if (packet_receive(&packet)) {
+                    logging_write("Main", "Packet received, processing");
                     gpio_put(LED_PIN, 1);  // Flash LED briefly when packet received
                     if (!protocol_process_packet(&packet)) {
-                        // Handle protocol error through state machine
+                        logging_write("Main", "Protocol processing failed, transitioning to ERROR");
                         state_machine_transition(STATE_ERROR, CONDITION_ERROR);
+                    } else {
+                        logging_write("Main", "Packet processed successfully");
                     }
                     sleep_ms(50);  // Keep LED on briefly
                     gpio_put(LED_PIN, led_state);  // Return to heartbeat state
                 } else {
-                    sleep_ms(10);  // Add small delay when no packet received to prevent tight-looping
+                    sleep_ms(1);  // Shorter delay when no packet
                 }
                 break;
                 
             case STATE_ERROR:
-                // Handle error recovery
+                logging_write("Main", "In ERROR state, attempting recovery");
                 if (state_machine_handle_error()) {
-                    // Error handled, state machine will transition
+                    logging_write("Main", "Error handled, continuing");
                     continue;
                 }
+                logging_write("Main", "Error recovery failed");
                 break;
         }
         
         // Heartbeat every second
-        if (heartbeat % 1000 == 0) {
+        if (current_time - last_heartbeat >= 1000) {
             led_state = !led_state;  // Toggle LED with heartbeat
             gpio_put(LED_PIN, led_state);
             
-            // Send heartbeat through debug packet instead of printf
+            // Send heartbeat through debug packet
             char message[64];
-            snprintf(message, sizeof(message), "Heartbeat: %lu, State: %s", heartbeat / 1000, state_to_string(current_state));
+            snprintf(message, sizeof(message), "Heartbeat: %lu, State: %s", current_time / 1000, state_to_string(current_state));
             Packet debug_packet;
             if (packet_create_debug(&debug_packet, "SYSTEM", message)) {
                 packet_transmit(&debug_packet);
             }
+            
+            last_heartbeat = current_time;
         }
-        heartbeat++;
-        sleep_ms(1);
     }
 }
