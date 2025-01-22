@@ -2,7 +2,6 @@
 #include "../system/time.h"
 #include "logging.h"
 #include <string.h>
-#include <stdio.h>
 
 // Global error state
 static ErrorDetails g_last_error = {0};
