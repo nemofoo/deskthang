@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include "pico/stdlib.h"
 #include "hardware/hardware.h"
 #include "hardware/display.h"
 #include "hardware/serial.h"
@@ -34,7 +33,6 @@ const DisplayConfig display_config = {
     .inverted = false
 };
 
-// Recovery configuration
 static const RecoveryConfig recovery_config = {
     .max_retries = MAX_RETRIES,
     .base_delay_ms = MIN_RETRY_DELAY_MS,

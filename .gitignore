@@ -3,6 +3,27 @@
 build/
 build_test/
 
+# Ignore build artifacts and directories
+/build/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+cmake_install.cmake
+Makefile
+
+# Ignore generated files
+compile_commands.json
+generated/
+pico_flash_region.ld
+
+# Ignore submodule untracked changes
+pico-sdk/*
+
+# Ignore dependencies
+_deps/
+
+# Ignore tools and temporary files
+picotool/
 # CMake files
 CMakeCache.txt
 CMakeFiles/
